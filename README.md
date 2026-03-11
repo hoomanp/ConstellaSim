@@ -25,17 +25,17 @@ Designed for scalability and realism, it handles the unique challenges of space-
   - Packet Loss Percentage (Congestion analysis).
   - Hop Count tracking.
 
-### 📱 Full-Stack Mobile & AI Diagnostic
+### 📱 Full-Stack Mobile & RAG Diagnostic
 - **Flask Configuration API:** A mobile-optimized web app that uses your phone's GPS to set the **Source Node** of a simulation.
-- **🤖 AI Network Topology Analyst:** Intelligent simulation analysis using **Azure OpenAI**, **Amazon Bedrock**, or **Google Gemini**. Automatically suggests ISL/GSL optimizations and routing improvements to reduce latency and congestion.
+- **🤖 RAG-Enabled AI Network Analyst:** Intelligent simulation analysis using **Azure OpenAI**, **Amazon Bedrock (Claude 3.5)**, or **Google Gemini (1.5 Pro)**. 
+- **📚 Grounded Optimization:** Uses **Retrieval-Augmented Generation (RAG)** to "read" network performance standards from the `knowledge_base/` folder. It provides technical critiques and topology suggestions based on LEO networking benchmarks.
 
 ---
 
-## ☁️ Multi-Cloud AI Support
-This project includes a unified AI diagnostic layer (`llm.py`) for multi-cloud support:
-- **Amazon Bedrock:** Optimized for cloud-native network simulations.
-- **Azure OpenAI:** Enterprise-grade AI analysis.
-- **Google Gemini:** High-speed network topology processing.
+## ☁️ Multi-Cloud & RAG Support
+This project includes an advanced AI diagnostic layer (`llm.py`) for multi-cloud RAG analysis:
+- **Grounded Results:** The analyst scans `knowledge_base/*.txt` to ensure simulation reports meet industry-standard LEO benchmarks.
+- **Cloud-Agnostic Engine:** Dynamically switch between **Amazon Bedrock**, **Azure**, or **Google** via environment variables.
 
 ## 🛠️ Tech Stack
 - **Simulation Engine:** SimPy (Discrete-Event)
