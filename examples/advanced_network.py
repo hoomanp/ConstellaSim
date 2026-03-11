@@ -1,10 +1,12 @@
 import simpy
 from constellasim.engine import ConstellationSimulator
 from constellasim.node import GroundStation, Satellite
+from constellasim.utils import Geocoder
 
 def run_simulation():
     env = simpy.Environment()
     sim = ConstellationSimulator(env)
+    geo = Geocoder()
     
     # 1. Setup a Mesh Network of 4 Satellites (ISL - Inter-Satellite Links)
     sats = ["SAT1", "SAT2", "SAT3", "SAT4"]
@@ -15,17 +17,25 @@ def run_simulation():
     sim.add_link("SAT1", "SAT2", weight=1.5)
     sim.add_link("SAT2", "SAT3", weight=2.0)
     sim.add_link("SAT3", "SAT4", weight=1.5)
-    sim.add_link("SAT4", "SAT1", weight=2.5) # Longer path
+    sim.add_link("SAT4", "SAT1", weight=2.5) 
     
-    # 2. Add Ground Stations
-    gs_lon = GroundStation(env, "GS-LONDON", 51.5, -0.1)
-    gs_nyc = GroundStation(env, "GS-NYC", 40.7, -74.0)
-    sim.add_node(gs_lon)
-    sim.add_node(gs_nyc)
+    # 2. Add Ground Stations (Dynamic Placement)
+    print("--- 🌍 Set up your LEO Network Ground Stations ---")
+    loc1_str = input("Enter Source City or ZIP (e.g., London): ") or "London"
+    loc2_str = input("Enter Destination City or ZIP (e.g., New York): ") or "New York"
     
-    # 3. Ground-to-Satellite Links (GSL)
-    sim.add_link("GS-LONDON", "SAT1", weight=2.0)
-    sim.add_link("GS-NYC", "SAT3", weight=2.0)
+    lat1, lon1 = geo.resolve_location(loc1_str)
+    lat2, lon2 = geo.resolve_location(loc2_str)
+    
+    gs_src = GroundStation(env, f"GS-{loc1_str.upper()}", lat1 or 0, lon1 or 0)
+    gs_dest = GroundStation(env, f"GS-{loc2_str.upper()}", lat2 or 0, lon2 or 0)
+    
+    sim.add_node(gs_src)
+    sim.add_node(gs_dest)
+    
+    # 3. Connect Ground Stations to the LEO Mesh
+    sim.add_link(gs_src.node_id, "SAT1", weight=2.0)
+    sim.add_link(gs_dest.node_id, "SAT3", weight=2.0)
     
     # 4. Process: Traffic Generation (100 packets, high congestion)
     def traffic_gen():
