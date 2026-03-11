@@ -25,11 +25,17 @@ Designed for scalability and realism, it handles the unique challenges of space-
   - Packet Loss Percentage (Congestion analysis).
   - Hop Count tracking.
 
-### 📱 Full-Stack Mobile Client
+### 📱 Full-Stack Mobile & AI Diagnostic
 - **Flask Configuration API:** A mobile-optimized web app that uses your phone's GPS to set the **Source Node** of a simulation.
-- **Cross-Platform Latency Test:** Test network performance between "My Location" and a remote global gateway from your iPhone or Android.
+- **🤖 AI Network Topology Analyst:** Intelligent simulation analysis using **Azure OpenAI**, **Amazon Bedrock**, or **Google Gemini**. Automatically suggests ISL/GSL optimizations and routing improvements to reduce latency and congestion.
 
 ---
+
+## ☁️ Multi-Cloud AI Support
+This project includes a unified AI diagnostic layer (`llm.py`) for multi-cloud support:
+- **Amazon Bedrock:** Optimized for cloud-native network simulations.
+- **Azure OpenAI:** Enterprise-grade AI analysis.
+- **Google Gemini:** High-speed network topology processing.
 
 ## 🛠️ Tech Stack
 - **Simulation Engine:** SimPy (Discrete-Event)
