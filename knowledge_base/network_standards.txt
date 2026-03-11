@@ -1,0 +1,6 @@
+LEO Networking Performance Standards:
+- Latency (End-to-End): Optimal LEO mesh latency for Real-time apps (e.g., Gaming/VoIP) is <50ms. High congestion paths >100ms should be rerouted.
+- TCP Congestion Control (BBR vs Cubic): BBR is recommended for space links with high BDP (Bandwidth-Delay Product).
+- Packet Loss Tolerance: Real-time satellite voice links degrade at >3% packet loss.
+- Routing Strategy: Shortest-Path First (SPF) with Dijkstra is the baseline, but Load-Aware Routing is required for high-density metropolitan areas.
+- Buffer Size: Satellite routers should limit buffer size to 256MB to avoid "bufferbloat" on high-latency links.
