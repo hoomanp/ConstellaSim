@@ -1,47 +1,87 @@
-# ConstellaSim: LEO Satellite Network Topology Simulator
+# 🌐 ConstellaSim: LEO Network Topology Simulator
 
-**ConstellaSim** is a discrete-event simulator for modeling packet-level networking across Low Earth Orbit (LEO) satellite constellations. 
+**ConstellaSim** is an advanced discrete-event simulator (DES) developed to model packet-level networking and topology dynamics in Low Earth Orbit (LEO) satellite constellations. 
 
-It allows researchers and engineers to analyze end-to-end latency, jitter, and handover performance in dynamic, high-speed space networks.
+Designed for scalability and realism, it handles the unique challenges of space-based networks: high relative velocities, constant topology changes, and the requirement for sub-ms latency optimization.
 
-## 🚀 Key Features
+---
 
-- **Discrete-Event Core:** Powered by `SimPy` for high-fidelity timing and concurrency.
-- **Multi-hop Routing:** Simulate packet movement across Inter-Satellite Links (ISL) and Ground-to-Satellite Links (GSL).
-- **Latency Modeling:** Calculate propagation delay based on speed-of-light physics (distance/300km/ms) and variable processing overhead.
-- **Node Management:** Classes for Satellites and Ground Stations with distinct behavior profiles.
+## 🚀 Key Simulation Features
 
-## 🛠️ Installation
+### 📡 Network Layer & Routing
+- **Dijkstra-Powered Routing:** Real-time pathfinding across satellite-to-satellite meshes using `NetworkX` for lowest-latency discovery.
+- **ISL & GSL Modeling:** Simulation of both **Inter-Satellite Links (ISL)** and **Ground-to-Satellite Links (GSL)**.
+- **Dynamic Topology:** Support for time-varying weights (latency) representing changing physical distances between satellites.
 
-```bash
-git clone https://github.com/YOUR_USERNAME/ConstellaSim.git
-cd ConstellaSim
-pip install -r requirements.txt
-```
+### 🚦 Congestion & Traffic Management
+- **Buffer/Memory Constraints:** Each node has a defined `buffer_limit`. Experience real-world **Packet Drops** and tail-drop congestion during high traffic loads.
+- **Propagation vs. Processing Delay:** Precise modeling of speed-of-light delay (km / 300,000 km/s) and random CPU processing overhead.
+- **Handover Logic:** Automated connection management for Ground Stations as satellites transit in and out of the "field of view."
 
-## 📊 Quick Start
+### 📊 Analytics & Insights
+- **Live Analytics Report:** Summary statistics including:
+  - Total packets Sent/Received.
+  - End-to-End Latency (ms).
+  - Packet Loss Percentage (Congestion analysis).
+  - Hop Count tracking.
 
-Run the multi-hop demonstration to see packets traveling from London to NYC via LEO satellites:
+### 📱 Full-Stack Mobile Client
+- **Flask Configuration API:** A mobile-optimized web app that uses your phone's GPS to set the **Source Node** of a simulation.
+- **Cross-Platform Latency Test:** Test network performance between "My Location" and a remote global gateway from your iPhone or Android.
 
-```bash
-python3 -m examples.multi_hop_demo
-```
+---
 
-## 🏗️ Architecture
+## 🛠️ Tech Stack
+- **Simulation Engine:** SimPy (Discrete-Event)
+- **Graph Theory:** NetworkX (Topology management)
+- **Geospatial Processing:** Geopy
+- **API/UI:** Flask (Web UI + REST endpoints)
+- **Data Structures:** NumPy, Pandas
 
-1.  **Engine (`engine.py`):** Manages the simulation clock and packet delivery logic.
-2.  **Nodes (`node.py`):** Defines the characteristics of ground terminals and satellite routers.
-3.  **Simulation Loop:** Uses Python generators (`yield`) to model time passing during signal propagation.
+---
 
-## 🛰️ Technical Context
+## 📦 Installation
 
-In a LEO constellation, the network topology is constantly changing. Satellites move at ~7.5 km/s, meaning a ground station must "handover" its connection every few minutes. **ConstellaSim** provides the foundation to test routing algorithms that can handle this extreme dynamism.
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/hoomanp/ConstellaSim.git
+   cd ConstellaSim
+   ```
 
-## 🚧 Roadmap
+2. **Install Dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-- [ ] **Dynamic Topology:** Integration with `Skyfield` to calculate distances between satellites in real-time.
-- [ ] **Shortest Path First (SPF):** Implement Dijkstra's algorithm using `NetworkX` to find the lowest-latency path.
-- [ ] **Congestion Modeling:** Simulate packet drops when satellite buffers are full.
+3. **Run the Advanced Mesh Network Demo:**
+   ```bash
+   python3 -m examples.advanced_network
+   ```
+
+---
+
+## 📱 Mobile Configuration Guide
+
+1. **Start the Simulator Web App:**
+   ```bash
+   python3 mobile_client/app.py
+   ```
+2. **On your Mobile Phone:**
+   Navigate to `http://<YOUR_LAPTOP_IP>:5001`.
+3. **Simulate:** Tap "Run Latency Test" to see how data would travel from your current coordinates across a LEO mesh to a target city!
+
+---
+
+## 🏗️ Architecture Design
+- `engine.py`: The simulation orchestrator, managing events, packet life cycles, and routing graphs.
+- `node.py`: Object-oriented definitions for Ground Terminals and LEO Satellite routers.
+- `utils.py`: Geocoding and distance resolution services.
+- `mobile_client/`: Flask implementation for a mobile configurator UI.
+
+---
 
 ## 📄 License
-MIT
+MIT License. 
+
+## 🤝 Contact
+**Hooman P.** - [GitHub](https://github.com/hoomanp)
