@@ -9,8 +9,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from constellasim.engine import ConstellationSimulator
 from constellasim.node import GroundStation, Satellite
 from constellasim.utils import Geocoder
+from constellasim.llm import NetworkAI
 
 app = Flask(__name__)
+ai_analyst = NetworkAI()
 
 @app.route('/')
 def home():
@@ -44,7 +46,7 @@ def run_sim():
         sim.add_node(Satellite(env, s, 1))
     
     # Link Satellites (Mesh)
-    sim.add_link("SAT1", "SAT2", weight=5.0) # ms latency
+    sim.add_link("SAT1", "SAT2", weight=5.0) 
     sim.add_link("SAT2", "SAT3", weight=5.0)
     
     # Create Ground Stations
@@ -53,7 +55,6 @@ def run_sim():
     sim.add_node(gs_src)
     sim.add_node(gs_dest)
     
-    # Connect to nearest Satellites (simplified)
     sim.add_link(gs_src.node_id, "SAT1", weight=2.0)
     sim.add_link(gs_dest.node_id, "SAT3", weight=2.0)
     
@@ -62,7 +63,13 @@ def run_sim():
     env.process(sim.send_packet(gs_src.node_id, gs_dest.node_id, packet_id))
     env.run(until=50)
     
-    # 4. Get Results
+    # 4. Generate AI Analysis
+    report = sim.generate_report()
+    try:
+        ai_analysis = ai_analyst.analyze_report(report)
+    except Exception as e:
+        ai_analysis = f"AI Analyst Offline: {e}"
+    
     if sim.stats["latencies"]:
         latency = sim.stats["latencies"][0]
         return jsonify({
@@ -70,10 +77,11 @@ def run_sim():
             "source": f"{src_lat:.2f}, {src_lon:.2f}",
             "destination": f"{dest_city} ({dest_lat:.2f}, {dest_lon:.2f})",
             "latency_ms": f"{latency:.2f}",
-            "hops": 3 # Hardcoded for this demo topology
+            "ai_analysis": ai_analysis,
+            "report": report
         })
     else:
-        return jsonify({"status": "Failed", "error": "Packet dropped"}), 500
+        return jsonify({"status": "Failed", "error": "Packet dropped", "ai_analysis": ai_analysis}), 500
 
 # --- Mobile HTML/JS Template ---
 HTML_TEMPLATE = """
@@ -82,7 +90,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ConstellaSim Mobile</title>
+    <title>ConstellaSim AI</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #111827; color: #f3f4f6; text-align: center; padding: 20px; }
         .card { background: #1f2937; border-radius: 12px; padding: 20px; margin: 15px auto; max-width: 400px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
@@ -90,30 +98,29 @@ HTML_TEMPLATE = """
         input { width: 90%; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #374151; background: #374151; color: white; font-size: 1rem; }
         button { background: #8b5cf6; color: white; border: none; padding: 15px 30px; font-size: 1.1rem; border-radius: 50px; cursor: pointer; width: 100%; margin-top: 10px; transition: background 0.2s; }
         button:active { background: #7c3aed; transform: scale(0.98); }
-        .result-box { margin-top: 20px; padding: 15px; background: #374151; border-radius: 8px; text-align: left; }
+        .ai-box { background: #4c1d95; border-left: 4px solid #a78bfa; padding: 15px; text-align: left; font-size: 0.9rem; margin-top: 20px; border-radius: 4px; }
         .data-row { display: flex; justify-content: space-between; margin: 8px 0; }
         .label { color: #9ca3af; }
         .value { font-weight: bold; color: #34d399; }
     </style>
 </head>
 <body>
-    <h1>🌐 ConstellaSim Mobile</h1>
-    <p>Test network latency from your location.</p>
+    <h1>🌐 ConstellaSim AI</h1>
+    <p>Intelligent Network Optimization</p>
     
     <div class="card">
         <input type="text" id="destination" placeholder="Destination City (e.g. London)" value="London">
-        <button onclick="runSimulation()">🚀 Run Latency Test</button>
+        <button onclick="runSimulation()">🚀 Run AI Diagnostic</button>
         <div id="status" style="margin-top:15px; color:#fbbf24;"></div>
     </div>
 
     <div id="results" class="card" style="display:none;">
-        <h3>Simulation Results</h3>
-        <div class="result-box">
-            <div class="data-row"><span class="label">Source</span><span class="value" id="res_src">-</span></div>
-            <div class="data-row"><span class="label">Target</span><span class="value" id="res_dest">-</span></div>
-            <div class="data-row"><span class="label">Latency</span><span class="value" id="res_lat">-</span></div>
-            <div class="data-row"><span class="label">Hops</span><span class="value" id="res_hops">-</span></div>
-        </div>
+        <h3>Simulation Stats</h3>
+        <div class="data-row"><span class="label">Target</span><span class="value" id="res_dest">-</span></div>
+        <div class="data-row"><span class="label">Latency</span><span class="value" id="res_lat">-</span></div>
+        
+        <h3>🤖 AI Topology Analysis</h3>
+        <div id="ai_analysis" class="ai-box">Analyzing topology...</div>
     </div>
 
     <script>
@@ -122,7 +129,7 @@ HTML_TEMPLATE = """
             const status = document.getElementById('status');
             
             if (!navigator.geolocation) {
-                status.textContent = "Geolocation needed for Source node.";
+                status.textContent = "Geolocation needed.";
                 return;
             }
 
@@ -130,7 +137,7 @@ HTML_TEMPLATE = """
             navigator.geolocation.getCurrentPosition((pos) => {
                 const lat = pos.coords.latitude;
                 const lon = pos.coords.longitude;
-                status.textContent = "Running Simulation...";
+                status.textContent = "Running AI Analysis...";
                 
                 fetch('/api/simulate', {
                     method: 'POST',
@@ -139,24 +146,17 @@ HTML_TEMPLATE = """
                 })
                 .then(res => res.json())
                 .then(data => {
-                    if(data.error) {
-                        status.textContent = "Error: " + data.error;
-                    } else {
-                        status.textContent = "Simulation Complete ✅";
-                        document.getElementById('results').style.display = 'block';
-                        document.getElementById('res_src').textContent = "My Location";
-                        document.getElementById('res_dest').textContent = data.destination;
-                        document.getElementById('res_lat').textContent = data.latency_ms + " ms";
-                        document.getElementById('res_hops').textContent = data.hops;
-                    }
+                    status.textContent = "Analysis Complete ✅";
+                    document.getElementById('results').style.display = 'block';
+                    document.getElementById('res_dest').textContent = data.destination;
+                    document.getElementById('res_lat').textContent = (data.latency_ms || "Dropped") + " ms";
+                    document.getElementById('ai_analysis').textContent = data.ai_analysis;
                 })
                 .catch(err => {
-                    console.error(err);
-                    status.textContent = "Simulation Failed ❌";
+                    status.textContent = "Analysis Failed ❌";
                 });
-
             }, (err) => {
-                status.textContent = "GPS Access Denied ❌";
+                status.textContent = "GPS Denied ❌";
             });
         }
     </script>
