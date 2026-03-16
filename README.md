@@ -44,6 +44,8 @@ This project includes an advanced AI diagnostic layer (`llm.py`) for multi-cloud
 - **Graph Theory:** NetworkX (Topology management)
 - **Geospatial Processing:** Geopy
 - **API/UI:** Flask (Web UI + REST endpoints)
+- **AI / Multi-Cloud:** OpenAI SDK, Boto3 (AWS Bedrock), Google Generative AI
+- **Configuration:** python-dotenv
 
 ---
 
@@ -128,6 +130,7 @@ This project includes an advanced AI diagnostic layer (`llm.py`) for multi-cloud
 - **Security:** Flask `debug=True` replaced with `FLASK_DEBUG` environment variable (defaults to `false`).
 - **Security:** Added full input validation, coordinate range checks, and destination city length/type checks on the `/api/simulate` endpoint.
 - **Optimization:** `kb_path` in `llm.py` is now resolved with `os.path.abspath()`.
+- **Fix:** `requirements.txt` — removed `numpy`, `matplotlib`, and `pandas`, which were listed but not imported anywhere in the codebase.
 
 ---
 
