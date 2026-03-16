@@ -1,8 +1,5 @@
 simpy
 networkx
-numpy
-matplotlib
-pandas
 geopy
 flask
 openai
