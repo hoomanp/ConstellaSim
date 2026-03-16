@@ -10,7 +10,8 @@ class NetworkAI:
     
     def __init__(self, provider=None):
         self.provider = provider or os.getenv("NETWORK_AI_PROVIDER", "google").lower()
-        self.kb_path = os.path.join(os.path.dirname(__file__), '..', 'knowledge_base')
+        # Optimization: normalize path to avoid traversal ambiguity with '..' components.
+        self.kb_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'knowledge_base'))
 
     def _get_kb_context(self):
         """Retrieves and consolidates all network standards from the knowledge base."""

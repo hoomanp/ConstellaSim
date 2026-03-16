@@ -15,16 +15,20 @@ def run_simulation():
     
     for node in [gs1, sat_a, sat_b, gs2]:
         sim.add_node(node)
-        
-    # 3. Define a multi-hop path (LONDON -> NYC via LEO ISLs)
-    network_path = ["GS-LONDON", "SAT-101", "SAT-102", "GS-NYC"]
-    
+
+    # 3. Define links for the multi-hop path (LONDON -> NYC via LEO ISLs)
+    # Bug fix: no links were defined, so Dijkstra found no path and all packets were dropped.
+    # Bug fix: send_packet(source_id, dest_id, packet_id) takes 3 string args, not a list.
+    sim.add_link("GS-LONDON", "SAT-101", weight=2.0)
+    sim.add_link("SAT-101", "SAT-102", weight=1.5)
+    sim.add_link("SAT-102", "GS-NYC", weight=2.0)
+
     # 4. Process: Send 10 packets every 5ms
     def packet_generator():
         for i in range(10):
-            yield env.timeout(5.0) # wait 5ms between packets
+            yield env.timeout(5.0)  # wait 5ms between packets
             print(f"[{env.now:.2f}ms] Dispatching Packet {i} from LONDON")
-            env.process(sim.send_packet(network_path, i))
+            env.process(sim.send_packet("GS-LONDON", "GS-NYC", i))
 
     # 5. Run it!
     print("--- Starting LEO Multi-hop Network Simulation ---")

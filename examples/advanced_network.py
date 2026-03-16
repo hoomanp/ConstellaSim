@@ -39,9 +39,11 @@ def run_simulation():
     
     # 4. Process: Traffic Generation (100 packets, high congestion)
     def traffic_gen():
+        # Bug fix: hardcoded "GS-LONDON"/"GS-NYC" IDs would break if the user enters
+        # different city names. Use the actual node IDs built from user input.
         for i in range(100):
-            yield env.timeout(1.0) # Intense traffic every 1ms
-            env.process(sim.send_packet("GS-LONDON", "GS-NYC", i))
+            yield env.timeout(1.0)  # Intense traffic every 1ms
+            env.process(sim.send_packet(gs_src.node_id, gs_dest.node_id, i))
 
     # 5. Run the Engine
     print("--- Running Advanced LEO Mesh Simulation ---")

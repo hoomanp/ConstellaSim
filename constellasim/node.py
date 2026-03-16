@@ -1,4 +1,5 @@
 import simpy
+import random  # Bug fix: random was used in handover() but never imported.
 
 class NetworkNode:
     """Base class for all network nodes (Satellites and Ground Stations)."""

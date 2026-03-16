@@ -22,12 +22,22 @@ def home():
 @app.route('/api/simulate', methods=['POST'])
 def run_sim():
     """Run a quick LEO simulation based on user coordinates."""
+    # Security fix: validate all inputs before use.
     data = request.json
-    
-    # 1. Get Source (GPS) and Destination (Text)
-    src_lat = float(data.get('src_lat'))
-    src_lon = float(data.get('src_lon'))
+    if not data:
+        return jsonify({"error": "Invalid JSON body"}), 400
+    try:
+        src_lat = float(data['src_lat'])
+        src_lon = float(data['src_lon'])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "src_lat and src_lon must be valid numbers"}), 400
+    if not (-90 <= src_lat <= 90) or not (-180 <= src_lon <= 180):
+        return jsonify({"error": "Coordinates out of range"}), 400
+
     dest_city = data.get('dest_city', 'New York')
+    if not isinstance(dest_city, str) or not dest_city.strip() or len(dest_city) > 100:
+        return jsonify({"error": "Invalid destination city"}), 400
+    dest_city = dest_city.strip()
     
     # Resolve Destination
     geo = Geocoder()
@@ -165,4 +175,6 @@ HTML_TEMPLATE = """
 """
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    # Security fix: debug=True exposes an interactive debugger; use env var to control it.
+    debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    app.run(host='0.0.0.0', port=5001, debug=debug)
