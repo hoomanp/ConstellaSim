@@ -13,6 +13,8 @@ from constellasim.llm import NetworkAI
 
 app = Flask(__name__)
 ai_analyst = NetworkAI()
+# Optimization: share a single Geocoder instance to reuse its result cache across requests.
+_geocoder = Geocoder()
 
 @app.route('/')
 def home():
@@ -37,11 +39,11 @@ def run_sim():
     dest_city = data.get('dest_city', 'New York')
     if not isinstance(dest_city, str) or not dest_city.strip() or len(dest_city) > 100:
         return jsonify({"error": "Invalid destination city"}), 400
-    dest_city = dest_city.strip()
-    
-    # Resolve Destination
-    geo = Geocoder()
-    dest_lat, dest_lon = geo.resolve_location(dest_city)
+    # Security: strip control characters to prevent prompt injection via city name embedded in LLM prompt.
+    dest_city = dest_city.strip().replace('\n', ' ').replace('\r', ' ')
+
+    # Resolve Destination using shared geocoder instance (caches results).
+    dest_lat, dest_lon = _geocoder.resolve_location(dest_city)
     
     if not dest_lat:
         return jsonify({"error": f"Could not find city: {dest_city}"}), 400
@@ -59,9 +61,11 @@ def run_sim():
     sim.add_link("SAT1", "SAT2", weight=5.0) 
     sim.add_link("SAT2", "SAT3", weight=5.0)
     
-    # Create Ground Stations
+    # Create Ground Stations.
+    # Security: use a hashed node ID to avoid embedding user-supplied text in graph keys and LLM prompts.
     gs_src = GroundStation(env, "Mobile-User", src_lat, src_lon)
-    gs_dest = GroundStation(env, f"Gateway-{dest_city}", dest_lat, dest_lon)
+    dest_node_id = f"Gateway-{abs(hash(dest_city)) % 100000}"
+    gs_dest = GroundStation(env, dest_node_id, dest_lat, dest_lon)
     sim.add_node(gs_src)
     sim.add_node(gs_dest)
     
@@ -176,5 +180,7 @@ HTML_TEMPLATE = """
 
 if __name__ == '__main__':
     # Security fix: debug=True exposes an interactive debugger; use env var to control it.
+    # FLASK_HOST defaults to 0.0.0.0 for mobile access; set to 127.0.0.1 for local-only use.
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
-    app.run(host='0.0.0.0', port=5001, debug=debug)
+    host = os.getenv("FLASK_HOST", "0.0.0.0")
+    app.run(host=host, port=5001, debug=debug)

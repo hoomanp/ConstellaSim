@@ -27,6 +27,10 @@ class ConstellationSimulator:
 
     def simulate_hop(self, source_id, dest_id, packet):
         """Simulate a packet hop with latency based on the edge weight."""
+        # Bug fix: guard against missing edge to avoid a silent KeyError crashing the SimPy process.
+        if not self.graph.has_edge(source_id, dest_id):
+            self.stats["dropped"] += 1
+            return False
         weight = self.graph[source_id][dest_id]['weight']
         
         # Propagation delay + processing
@@ -69,7 +73,8 @@ class ConstellationSimulator:
             return "No data collected."
             
         avg_latency = sum(self.stats["latencies"]) / len(self.stats["latencies"])
-        p_loss = (self.stats["dropped"] / self.stats["sent"]) * 100
+        # Bug fix: guard against division by zero if generate_report is called before any send_packet.
+        p_loss = (self.stats["dropped"] / self.stats["sent"]) * 100 if self.stats["sent"] > 0 else 0.0
         
         report = f"\n--- ConstellaSim Analytics Report ---\n"
         report += f"Total Packets Sent: {self.stats['sent']}\n"
