@@ -66,6 +66,10 @@ class ConstellationSimulator:
             
         self.stats["received"] += 1
         self.stats["latencies"].append(self.env.now - packet['start_time'])
+        # DoS fix: cap stored latency samples to prevent unbounded memory growth
+        # in long-running simulations.
+        if len(self.stats["latencies"]) > 10_000:
+            del self.stats["latencies"][:-10_000]
 
     def generate_report(self):
         """Generate a summary of the simulation results."""

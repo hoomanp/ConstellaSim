@@ -1,12 +1,27 @@
 import os
+import re
 import json
 import glob
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 # Optimization: cap total KB content to prevent runaway token costs and memory use.
 _MAX_KB_CHARS = 50_000
+
+# Security: pattern to strip ASCII control characters and Unicode bidirectional
+# overrides that can be used for prompt injection.
+_CONTROL_CHARS_RE = re.compile(
+    r'[\x00-\x1f\x7f\u200b-\u200d\u202a-\u202e\u2066-\u2069]'
+)
+
+def _sanitize(text):
+    """Strip control characters and bidirectional overrides from any string."""
+    return _CONTROL_CHARS_RE.sub(' ', str(text)).strip()
+
 
 class NetworkAI:
     """RAG-Enabled AI Assistant for Analyzing LEO Network Topology."""
@@ -14,9 +29,10 @@ class NetworkAI:
     def __init__(self, provider=None):
         self.provider = provider or os.getenv("NETWORK_AI_PROVIDER", "google").lower()
         self.kb_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'knowledge_base'))
-        # Security: assert kb_path stays within the project tree to prevent path traversal.
+        # Security: use if/raise instead of assert — assert is compiled away with python -O.
         _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        assert self.kb_path.startswith(_project_root), "kb_path resolves outside project directory"
+        if not self.kb_path.startswith(_project_root):
+            raise ValueError(f"kb_path '{self.kb_path}' resolves outside project directory")
         # Optimization: load KB once at startup; re-reading every request wastes I/O and tokens.
         self._kb_cache = self._load_kb()
         # Optimization: build AI clients once to reuse HTTP sessions across requests.
@@ -63,9 +79,9 @@ class NetworkAI:
     def analyze_report(self, sim_report):
         """Asks the AI to analyze the simulation report GROUNDED in network standards."""
         kb_context = self._get_kb_context()
-        # Security: strip control characters from sim_report to prevent prompt injection
-        # (sim_report embeds user-supplied dest_city which could contain adversarial content).
-        safe_report = sim_report.replace('\r', '').strip()
+        # Security: strip all control characters to prevent prompt injection.
+        # sim_report embeds user-supplied dest_city (hashed in node ID but present in report).
+        safe_report = _sanitize(sim_report)
 
         system_instructions = (
             "You are a Satellite Network Architect.\n"

@@ -1,6 +1,9 @@
 from flask import Flask, render_template_string, jsonify, request
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import sys
 import os
+import logging
 import simpy
 
 # Add parent directory to sys.path
@@ -12,9 +15,20 @@ from constellasim.utils import Geocoder
 from constellasim.llm import NetworkAI
 
 app = Flask(__name__)
+limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "30 per minute"])
 ai_analyst = NetworkAI()
 # Optimization: share a single Geocoder instance to reuse its result cache across requests.
 _geocoder = Geocoder()
+
+@app.after_request
+def set_security_headers(response):
+    """Add browser-level security headers to every response."""
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    )
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    return response
 
 @app.route('/')
 def home():
@@ -22,6 +36,7 @@ def home():
     return render_template_string(HTML_TEMPLATE)
 
 @app.route('/api/simulate', methods=['POST'])
+@limiter.limit("30 per minute")
 def run_sim():
     """Run a quick LEO simulation based on user coordinates."""
     # Security fix: validate all inputs before use.
@@ -81,8 +96,11 @@ def run_sim():
     report = sim.generate_report()
     try:
         ai_analysis = ai_analyst.analyze_report(report)
-    except Exception as e:
-        ai_analysis = f"AI Analyst Offline: {e}"
+    except Exception:
+        # Security: log full exception server-side; return generic message to avoid leaking
+        # API endpoint URLs, credentials, or internal state to the client.
+        app.logger.exception("AI analysis failed")
+        ai_analysis = "AI analysis temporarily unavailable."
     
     if sim.stats["latencies"]:
         latency = sim.stats["latencies"][0]

@@ -2,6 +2,7 @@ simpy
 networkx
 geopy
 flask
+flask-limiter
 openai
 boto3
 google-generativeai
