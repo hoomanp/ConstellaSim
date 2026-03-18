@@ -1,0 +1,13 @@
+run = "python mobile_client/app.py"
+entrypoint = "mobile_client/app.py"
+
+[nix]
+channel = "stable-23_11"
+
+[deployment]
+run = ["sh", "-c", "python mobile_client/app.py"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 8080
+externalPort = 80

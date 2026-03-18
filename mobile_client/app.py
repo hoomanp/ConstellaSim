@@ -201,4 +201,6 @@ if __name__ == '__main__':
     # FLASK_HOST defaults to 0.0.0.0 for mobile access; set to 127.0.0.1 for local-only use.
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     host = os.getenv("FLASK_HOST", "0.0.0.0")
-    app.run(host=host, port=5001, debug=debug)
+    # PORT env var is set automatically by Replit, Railway, Render, and similar platforms.
+    port = int(os.getenv("PORT", 5001))
+    app.run(host=host, port=port, debug=debug)
