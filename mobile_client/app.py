@@ -1,9 +1,11 @@
-from flask import Flask, render_template_string, jsonify, request
+from flask import Flask, render_template_string, jsonify, request, g
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import sys
 import os
+import secrets
 import logging
+import threading
 import simpy
 
 # Add parent directory to sys.path
@@ -19,12 +21,21 @@ limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "3
 ai_analyst = NetworkAI()
 # Optimization: share a single Geocoder instance to reuse its result cache across requests.
 _geocoder = Geocoder()
+# V-03: global semaphore to cap simultaneous CPU-bound simulations.
+_sim_semaphore = threading.Semaphore(4)
+
+@app.before_request
+def generate_csp_nonce():
+    """Generate a per-request nonce for use in CSP and script tags."""
+    g.csp_nonce = secrets.token_urlsafe(16)
 
 @app.after_request
 def set_security_headers(response):
     """Add browser-level security headers to every response."""
+    nonce = getattr(g, 'csp_nonce', '')
+    # V-06: use nonce-based CSP instead of unsafe-inline.
     response.headers['Content-Security-Policy'] = (
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+        f"default-src 'self'; script-src 'self' 'nonce-{nonce}'; style-src 'self' 'unsafe-inline'"
     )
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
@@ -33,7 +44,7 @@ def set_security_headers(response):
 @app.route('/')
 def home():
     """Renders the Mobile Configurator UI."""
-    return render_template_string(HTML_TEMPLATE)
+    return render_template_string(HTML_TEMPLATE, nonce=g.csp_nonce)
 
 @app.route('/api/simulate', methods=['POST'])
 @limiter.limit("30 per minute")
@@ -54,8 +65,10 @@ def run_sim():
     dest_city = data.get('dest_city', 'New York')
     if not isinstance(dest_city, str) or not dest_city.strip() or len(dest_city) > 100:
         return jsonify({"error": "Invalid destination city"}), 400
-    # Security: strip control characters to prevent prompt injection via city name embedded in LLM prompt.
-    dest_city = dest_city.strip().replace('\n', ' ').replace('\r', ' ')
+    # V-01: apply full control-character sanitization (not just \n/\r) to prevent
+    # prompt injection and to strip chars that could confuse the geocoder.
+    from constellasim.llm import _sanitize
+    dest_city = _sanitize(dest_city.strip())
 
     # Resolve Destination using shared geocoder instance (caches results).
     dest_lat, dest_lon = _geocoder.resolve_location(dest_city)
@@ -88,9 +101,15 @@ def run_sim():
     sim.add_link(gs_dest.node_id, "SAT3", weight=2.0)
     
     # 3. Run Traffic
-    packet_id = 1
-    env.process(sim.send_packet(gs_src.node_id, gs_dest.node_id, packet_id))
-    env.run(until=50)
+    # V-03: acquire semaphore to cap simultaneous CPU-bound simulations globally.
+    if not _sim_semaphore.acquire(blocking=False):
+        return jsonify({"error": "Server busy, please retry shortly."}), 503
+    try:
+        packet_id = 1
+        env.process(sim.send_packet(gs_src.node_id, gs_dest.node_id, packet_id))
+        env.run(until=50)
+    finally:
+        _sim_semaphore.release()
     
     # 4. Generate AI Analysis
     report = sim.generate_report()
@@ -155,7 +174,7 @@ HTML_TEMPLATE = """
         <div id="ai_analysis" class="ai-box">Analyzing topology...</div>
     </div>
 
-    <script>
+    <script nonce="{{ nonce }}">
         function runSimulation() {
             const dest = document.getElementById('destination').value;
             const status = document.getElementById('status');

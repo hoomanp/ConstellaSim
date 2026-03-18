@@ -61,19 +61,27 @@ class NetworkAI:
 
     def _init_clients(self):
         """Initialize AI clients once at startup for connection reuse."""
+        # V-05: validate required secrets at boot so misconfigured deployments fail fast.
         if self.provider == "azure":
+            key = os.getenv("AZURE_OPENAI_KEY")
+            endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+            if not key or not endpoint:
+                raise RuntimeError("AZURE_OPENAI_KEY and AZURE_OPENAI_ENDPOINT must be set for azure provider")
             from openai import AzureOpenAI
             self._azure_client = AzureOpenAI(
-                api_key=os.getenv("AZURE_OPENAI_KEY"),
+                api_key=key,
                 api_version="2024-02-15-preview",
-                azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
+                azure_endpoint=endpoint
             )
         elif self.provider == "amazon":
             import boto3
             self._amazon_client = boto3.client("bedrock-runtime", region_name="us-east-1")
         elif self.provider == "google":
+            key = os.getenv("GOOGLE_API_KEY")
+            if not key:
+                raise RuntimeError("GOOGLE_API_KEY must be set for google provider")
             import google.generativeai as genai
-            genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+            genai.configure(api_key=key)
             self._google_model = genai.GenerativeModel('gemini-1.5-flash')
 
     def analyze_report(self, sim_report):
