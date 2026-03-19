@@ -38,6 +38,11 @@ class ConstellationSimulator:
         yield self.env.timeout(total_delay)
         
         # Check for buffer overflow (Congestion Simulation)
+        # M-6: guard against a node that exists in the graph (added implicitly by
+        # add_edge) but was never registered via add_node(), which would raise KeyError.
+        if dest_id not in self.nodes:
+            self.stats["dropped"] += 1
+            return False
         dest_node = self.nodes[dest_id]
         if hasattr(dest_node, 'buffer_limit') and len(dest_node.packet_queue.items) >= dest_node.buffer_limit:
             self.stats["dropped"] += 1
@@ -66,9 +71,14 @@ class ConstellationSimulator:
             
         self.stats["received"] += 1
         self.stats["latencies"].append(self.env.now - packet['start_time'])
-        # DoS fix: cap stored latency samples to prevent unbounded memory growth
-        # in long-running simulations.
+        # DoS fix: cap stored latency samples to prevent unbounded memory growth.
+        # L-2: log a warning so callers know the average is a rolling window, not full history.
         if len(self.stats["latencies"]) > 10_000:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Latency buffer exceeded 10,000 samples — oldest entries truncated; "
+                "average in report reflects a rolling window, not the full run."
+            )
             del self.stats["latencies"][:-10_000]
 
     def generate_report(self):

@@ -1,3 +1,4 @@
+import os
 import re
 import threading
 import logging
@@ -9,15 +10,19 @@ logger = logging.getLogger(__name__)
 
 # V-08: allowlist pattern — accept only printable letters, digits, spaces, commas,
 # hyphens, periods, and parentheses (covers city names, ZIP codes, and addresses).
-_LOCATION_RE = re.compile(r'^[\w\s,.\-()+]+$', re.UNICODE)
+# M-2: removed '+' — not valid in city/address names; its URL-encoding semantics
+# widen the attack surface unnecessarily.
+_LOCATION_RE = re.compile(r'^[\w\s,.\-()]+$', re.UNICODE)
 _CACHE_MAX = 1_000  # V-02: cap to prevent unbounded memory growth
 
 
 class Geocoder:
     """Utility to resolve ground station locations from names or ZIP codes."""
 
-    def __init__(self, user_agent="ConstellaSim"):
-        self.geolocator = Nominatim(user_agent=user_agent)
+    def __init__(self, user_agent=None):
+        # LOW-1: Nominatim policy requires an identifying user-agent with contact info.
+        agent = user_agent or os.getenv("NOMINATIM_USER_AGENT", "ConstellaSim/1.0")
+        self.geolocator = Nominatim(user_agent=agent)
         # V-02: bounded LRU-style cache using OrderedDict (evicts oldest on overflow).
         self._cache: OrderedDict = OrderedDict()
         self._lock = threading.Lock()

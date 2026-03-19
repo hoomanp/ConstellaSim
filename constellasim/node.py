@@ -10,10 +10,14 @@ class NetworkNode:
         self.received_packets = []
         self.buffer_limit = buffer_limit # Simulation of satellite memory constraints
 
+    _PACKET_LOG_MAX = 10_000  # M-4: cap to prevent unbounded memory growth.
+
     def receive_packet(self, packet):
         """Receive a packet and log the arrival time."""
         packet['arrival_time'] = self.env.now
         self.received_packets.append(packet)
+        if len(self.received_packets) > self._PACKET_LOG_MAX:
+            del self.received_packets[:-self._PACKET_LOG_MAX]
 
 class Satellite(NetworkNode):
     """A LEO Satellite with dynamic ISL capabilities."""

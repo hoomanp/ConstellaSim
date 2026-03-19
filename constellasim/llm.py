@@ -12,10 +12,11 @@ logger = logging.getLogger(__name__)
 # Optimization: cap total KB content to prevent runaway token costs and memory use.
 _MAX_KB_CHARS = 50_000
 
-# Security: pattern to strip ASCII control characters and Unicode bidirectional
-# overrides that can be used for prompt injection.
+# Security: pattern to strip ASCII control characters, Unicode bidirectional overrides,
+# line/paragraph separators, soft hyphen, BOM, and LRM/RLM marks — all usable for
+# prompt injection or token-boundary manipulation.
 _CONTROL_CHARS_RE = re.compile(
-    r'[\x00-\x1f\x7f\u200b-\u200d\u202a-\u202e\u2066-\u2069]'
+    r'[\x00-\x1f\x7f\u00ad\u200b-\u200f\u202a-\u202e\u2028\u2029\u2066-\u2069\ufeff]'
 )
 
 def _sanitize(text):
@@ -31,7 +32,8 @@ class NetworkAI:
         self.kb_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'knowledge_base'))
         # Security: use if/raise instead of assert — assert is compiled away with python -O.
         _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        if not self.kb_path.startswith(_project_root):
+        # M-5: append os.sep to prevent the same prefix-bypass as the calculator path check.
+        if not self.kb_path.startswith(_project_root + os.sep):
             raise ValueError(f"kb_path '{self.kb_path}' resolves outside project directory")
         # Optimization: load KB once at startup; re-reading every request wastes I/O and tokens.
         self._kb_cache = self._load_kb()
@@ -51,7 +53,9 @@ class NetworkAI:
                 continue
             with open(resolved, 'r') as f:
                 kb_content += f"\n--- Document: {os.path.basename(file_path)} ---\n"
-                kb_content += f.read() + "\n"
+                # H-1: sanitize KB file content to prevent prompt injection via
+                # a compromised or maliciously crafted knowledge base file.
+                kb_content += _sanitize(f.read()) + "\n"
             if len(kb_content) >= _MAX_KB_CHARS:
                 break
         return kb_content[:_MAX_KB_CHARS]
@@ -74,8 +78,14 @@ class NetworkAI:
                 azure_endpoint=endpoint
             )
         elif self.provider == "amazon":
+            # H-2/H-3: validate AWS credentials at boot; make region configurable.
             import boto3
-            self._amazon_client = boto3.client("bedrock-runtime", region_name="us-east-1")
+            region = os.getenv("AWS_REGION", "us-east-1")
+            try:
+                boto3.client("sts", region_name=region).get_caller_identity()
+            except Exception as exc:
+                raise RuntimeError("AWS credentials are not configured or invalid for amazon provider") from exc
+            self._amazon_client = boto3.client("bedrock-runtime", region_name=region)
         elif self.provider == "google":
             key = os.getenv("GOOGLE_API_KEY")
             if not key:
