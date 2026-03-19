@@ -142,3 +142,147 @@ class NetworkAI:
     def _call_google(self, prompt):
         response = self._google_model.generate_content(prompt)
         return response.text
+
+    # --- Feature 1: Streaming ---
+
+    def analyze_report_stream(self, sim_report):
+        """Yields token chunks for streaming AI analysis via SSE."""
+        kb_context = self._get_kb_context()
+        safe_report = _sanitize(sim_report)
+
+        system_instructions = (
+            "You are a Satellite Network Architect.\n"
+            "Use the provided LEO Networking Performance Standards to evaluate the simulation report.\n"
+            "Critique the latency, packet loss, and buffer utilization based on the technical standards."
+        )
+        full_prompt = (
+            f"{system_instructions}\n\n"
+            f"--- NETWORK STANDARDS CONTEXT ---\n{kb_context}\n"
+            f"--- SIMULATION REPORT ---\n{safe_report}\n\n"
+            "TASK: Provide a grounded technical critique and suggest topology optimizations."
+        )
+
+        if self.provider == "azure":
+            yield from self._stream_azure(full_prompt)
+        elif self.provider == "amazon":
+            yield from self._stream_amazon(full_prompt)
+        elif self.provider == "google":
+            yield from self._stream_google(full_prompt)
+
+    def _stream_google(self, prompt):
+        response = self._google_model.generate_content(prompt, stream=True)
+        for chunk in response:
+            if chunk.text:
+                yield chunk.text
+
+    def _stream_azure(self, prompt):
+        stream = self._azure_client.chat.completions.create(
+            model=os.getenv("AZURE_DEPLOYMENT_NAME", "gpt-4-turbo"),
+            messages=[{"role": "user", "content": prompt}],
+            stream=True,
+        )
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
+    def _stream_amazon(self, prompt):
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 2048,
+            "messages": [{"role": "user", "content": prompt}],
+        })
+        response = self._amazon_client.invoke_model_with_response_stream(
+            body=body, modelId="anthropic.claude-3-sonnet-20240229-v1:0"
+        )
+        for event in response["body"]:
+            chunk = json.loads(event["chunk"]["bytes"])
+            if chunk.get("type") == "content_block_delta":
+                yield chunk.get("delta", {}).get("text", "")
+
+    # --- Feature 2: Multi-Turn Chat ---
+
+    def chat(self, messages):
+        """Multi-turn conversation. messages is a list of {role, content} dicts."""
+        if self.provider == "azure":
+            return self._chat_azure(messages)
+        elif self.provider == "amazon":
+            return self._chat_amazon(messages)
+        elif self.provider == "google":
+            return self._chat_google(messages)
+        else:
+            return "AI Provider not configured correctly."
+
+    def _chat_azure(self, messages):
+        response = self._azure_client.chat.completions.create(
+            model=os.getenv("AZURE_DEPLOYMENT_NAME", "gpt-4-turbo"),
+            messages=messages,
+        )
+        return response.choices[0].message.content
+
+    def _chat_amazon(self, messages):
+        system_parts = [m["content"] for m in messages if m["role"] == "system"]
+        user_msgs = [m for m in messages if m["role"] != "system"]
+        body_dict = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 2048,
+            "messages": user_msgs,
+        }
+        if system_parts:
+            body_dict["system"] = " ".join(system_parts)
+        body = json.dumps(body_dict)
+        response = self._amazon_client.invoke_model(
+            body=body, modelId="anthropic.claude-3-sonnet-20240229-v1:0"
+        )
+        return json.loads(response.get("body").read())["content"][0]["text"]
+
+    def _chat_google(self, messages):
+        """Convert OpenAI-format messages to Gemini chat format."""
+        system_content = ""
+        gemini_history = []
+        for m in messages:
+            if m["role"] == "system":
+                system_content += m["content"] + "\n"
+            elif m["role"] == "user":
+                content = (system_content + m["content"]) if system_content else m["content"]
+                system_content = ""
+                gemini_history.append({"role": "user", "parts": [content]})
+            elif m["role"] == "assistant":
+                gemini_history.append({"role": "model", "parts": [m["content"]]})
+
+        if not gemini_history:
+            return "No messages provided."
+
+        last_msg = gemini_history[-1]["parts"][0]
+        history = gemini_history[:-1]
+        chat_session = self._google_model.start_chat(history=history)
+        return chat_session.send_message(last_msg).text
+
+    # --- Feature 5: Network Briefing ---
+
+    def generate_briefing(self, data):
+        """Generate a structured Markdown network briefing report."""
+        kb_context = self._get_kb_context()
+        safe_data = _sanitize(json.dumps(data))
+
+        system_instructions = (
+            "You are a Satellite Network Architect. Generate a structured network briefing "
+            "in GitHub-Flavored Markdown with tables and headers. Include these sections:\n"
+            "# Network Topology\n# Simulation Results\n# Performance Analysis\n"
+            "# Topology Optimisation Recommendations\n"
+            "Use the technical standards context to ground your assessment."
+        )
+        full_prompt = (
+            f"{system_instructions}\n\n"
+            f"--- NETWORK STANDARDS CONTEXT ---\n{kb_context}\n"
+            f"--- SIMULATION DATA ---\n{safe_data}\n\n"
+            "Generate the complete network briefing report in Markdown format."
+        )
+
+        if self.provider == "azure":
+            return self._call_azure(full_prompt)
+        elif self.provider == "amazon":
+            return self._call_amazon(full_prompt)
+        elif self.provider == "google":
+            return self._call_google(full_prompt)
+        else:
+            return "# Network Briefing\n\nAI Provider not configured correctly."
