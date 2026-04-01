@@ -257,6 +257,108 @@ class NetworkAI:
         chat_session = self._google_model.start_chat(history=history)
         return chat_session.send_message(last_msg).text
 
+    # --- Feature 6: AI Topology Optimizer ---
+
+    def optimize_topology(self, sim_data, constraints=""):
+        """
+        Suggest concrete topology changes grounded in LEO networking standards.
+
+        Returns a dict:
+          {
+            "recommendations": [
+              {"change": str, "expected_impact": str, "priority": "HIGH|MEDIUM|LOW"},
+              ...
+            ],
+            "rationale": str,          # plain-English summary
+            "health_score": int,       # 0–100 composite score
+          }
+        Falls back to {"recommendations": [], "rationale": <text>, "health_score": null}
+        if the LLM returns unparseable JSON.
+        """
+        kb_context = self._get_kb_context()
+        safe_data = _sanitize(json.dumps(sim_data))
+        safe_constraints = _sanitize(constraints[:300]) if constraints else "minimize end-to-end latency"
+
+        system_instructions = (
+            "You are a Satellite Network Architect. "
+            "You MUST respond with ONLY a valid JSON object — no markdown, no prose outside the object.\n\n"
+            "Schema:\n"
+            '{\n'
+            '  "recommendations": [\n'
+            '    {"change": "<string>", "expected_impact": "<string>", "priority": "<HIGH|MEDIUM|LOW>"}\n'
+            '  ],\n'
+            '  "rationale": "<one paragraph plain-English summary>",\n'
+            '  "health_score": <integer 0-100>\n'
+            '}\n\n'
+            "Base your recommendations strictly on the LEO Networking Performance Standards provided.\n"
+            "Generate 2–4 concrete, actionable recommendations."
+        )
+
+        full_prompt = (
+            f"{system_instructions}\n\n"
+            f"--- NETWORK STANDARDS CONTEXT ---\n{kb_context}\n"
+            f"--- CURRENT SIMULATION METRICS ---\n{safe_data}\n"
+            f"--- OPTIMISATION GOAL ---\n{safe_constraints}\n\n"
+            "Return only the JSON object."
+        )
+
+        if self.provider == "azure":
+            raw = self._call_azure(full_prompt)
+        elif self.provider == "amazon":
+            raw = self._call_amazon(full_prompt)
+        elif self.provider == "google":
+            raw = self._call_google(full_prompt)
+        else:
+            return {"recommendations": [], "rationale": "AI Provider not configured.", "health_score": None}
+
+        return self._parse_optimizer_response(raw)
+
+    @staticmethod
+    def _parse_optimizer_response(text):
+        """Extract the optimizer JSON from LLM output, stripping markdown fences."""
+        cleaned = re.sub(r"```(?:json)?", "", text).strip()
+        # Try direct parse first
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            # Fallback: find first {...} block
+            match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+            if match:
+                try:
+                    data = json.loads(match.group(0))
+                except json.JSONDecodeError:
+                    return {"recommendations": [], "rationale": cleaned[:500], "health_score": None}
+            else:
+                return {"recommendations": [], "rationale": cleaned[:500], "health_score": None}
+
+        # Validate and normalise
+        recs = data.get("recommendations", [])
+        if not isinstance(recs, list):
+            recs = []
+        valid_recs = []
+        for r in recs:
+            if isinstance(r, dict) and "change" in r:
+                priority = r.get("priority", "MEDIUM").upper()
+                if priority not in ("HIGH", "MEDIUM", "LOW"):
+                    priority = "MEDIUM"
+                valid_recs.append({
+                    "change": str(r.get("change", ""))[:300],
+                    "expected_impact": str(r.get("expected_impact", ""))[:300],
+                    "priority": priority,
+                })
+
+        raw_score = data.get("health_score")
+        try:
+            health_score = max(0, min(100, int(raw_score)))
+        except (TypeError, ValueError):
+            health_score = None
+
+        return {
+            "recommendations": valid_recs,
+            "rationale": str(data.get("rationale", ""))[:1000],
+            "health_score": health_score,
+        }
+
     # --- Feature 5: Network Briefing ---
 
     def generate_briefing(self, data):

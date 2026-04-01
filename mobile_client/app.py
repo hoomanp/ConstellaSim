@@ -368,6 +368,36 @@ def plan():
     return jsonify({"error": "Unknown function"}), 422
 
 
+# --- Feature 6: AI Topology Optimizer ---
+@app.route('/api/optimize', methods=['POST'])
+@limiter.limit("10 per minute")
+def optimize():
+    """Return LLM-generated topology recommendations grounded in LEO standards."""
+    if ai_analyst is None:
+        return jsonify({"error": "AI not configured"}), 503
+    with _sim_lock:
+        snapshot = dict(_last_sim)
+    if not snapshot:
+        return jsonify({"error": "No simulation data yet. Run a simulation first."}), 400
+
+    data = request.json or {}
+    constraints = data.get("constraints", "")
+    if not isinstance(constraints, str):
+        constraints = ""
+    constraints = constraints.strip()[:300]
+
+    from constellasim.llm import _sanitize
+    constraints = _sanitize(constraints)
+
+    try:
+        result = ai_analyst.optimize_topology(snapshot, constraints)
+    except Exception:
+        app.logger.exception("Topology optimization failed")
+        return jsonify({"error": "Optimization temporarily unavailable."}), 503
+
+    return jsonify(result)
+
+
 # --- Feature 4: Alert feed ---
 @app.route('/api/alerts')
 def alerts():
@@ -438,6 +468,15 @@ HTML_TEMPLATE = """
         .chat-input-row button { background: #8b5cf6; color: white; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; }
         .btn-secondary { background: transparent; border: 1px solid #4b5563; color: #9ca3af; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; margin-top: 8px; }
         .btn-briefing { background: #064e3b; color: #6ee7b7; border: 1px solid #059669; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; margin-top: 12px; width: 100%; }
+        .btn-optimize { background: #1e1b4b; color: #a5b4fc; border: 1px solid #4f46e5; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; margin-top: 8px; width: 100%; }
+        .optimize-rec { background: #1e293b; border-left: 3px solid #6366f1; padding: 10px 12px; border-radius: 4px; margin: 6px 0; font-size: 0.85rem; text-align: left; }
+        .rec-HIGH { border-left-color: #ef4444; }
+        .rec-MEDIUM { border-left-color: #f59e0b; }
+        .rec-LOW { border-left-color: #22d3ee; }
+        .health-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; margin-bottom: 8px; }
+        .health-good { background: #14532d; color: #6ee7b7; }
+        .health-warn { background: #431407; color: #fca5a5; }
+        .health-crit { background: #7f1d1d; color: #fca5a5; }
         /* Streaming cursor */
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
         .cursor { display: inline-block; width: 7px; height: 1em; background: #a78bfa; animation: blink 1s step-end infinite; vertical-align: text-bottom; margin-left: 2px; }
@@ -487,6 +526,16 @@ HTML_TEMPLATE = """
         <h3>&#129302; AI Topology Analysis</h3>
         <div class="ai-box">
             <span id="ai-text"></span><span id="ai-cursor" class="cursor hidden"></span>
+        </div>
+
+        <!-- Feature 6: Topology Optimizer -->
+        <div class="chat-section hidden" id="optimizer-widget">
+            <h3>&#128161; AI Topology Optimizer</h3>
+            <input type="text" class="text-input" id="opt-constraints"
+                   placeholder='Goal: e.g. "minimize latency" or "maximize reliability"'
+                   style="margin:6px 0;">
+            <button class="btn-optimize" onclick="runOptimizer()">&#9889; Optimize Topology</button>
+            <div id="optimizer-results" style="margin-top:10px;"></div>
         </div>
 
         <!-- Feature 2: Chat widget -->
@@ -573,6 +622,7 @@ HTML_TEMPLATE = """
                     document.getElementById('ai-cursor').classList.add('hidden');
                     document.getElementById('briefing-btn').classList.remove('hidden');
                     document.getElementById('chat-widget').classList.remove('hidden');
+                    document.getElementById('optimizer-widget').classList.remove('hidden');
                     status.textContent = "Analysis Complete";
                 });
 
@@ -632,6 +682,69 @@ HTML_TEMPLATE = """
                 if (e.key === 'Enter') askPlainEnglish();
             });
         });
+
+        // Feature 6: Topology Optimizer
+        function runOptimizer() {
+            var constraints = document.getElementById('opt-constraints').value.trim();
+            var container = document.getElementById('optimizer-results');
+            while (container.firstChild) { container.removeChild(container.firstChild); }
+            var loading = document.createElement('p');
+            loading.style.color = '#9ca3af';
+            loading.style.fontSize = '0.85rem';
+            loading.textContent = 'Analyzing topology\u2026';
+            container.appendChild(loading);
+
+            fetch('/api/optimize', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({constraints: constraints})
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                while (container.firstChild) { container.removeChild(container.firstChild); }
+                if (data.error) {
+                    var err = document.createElement('p');
+                    err.style.color = '#f87171';
+                    err.textContent = data.error;
+                    container.appendChild(err);
+                    return;
+                }
+                // Health score badge
+                if (data.health_score !== null && data.health_score !== undefined) {
+                    var badge = document.createElement('span');
+                    var score = parseInt(data.health_score, 10);
+                    badge.className = 'health-badge ' + (score >= 70 ? 'health-good' : score >= 40 ? 'health-warn' : 'health-crit');
+                    badge.textContent = 'Health Score: ' + score + ' / 100';
+                    container.appendChild(badge);
+                }
+                // Rationale
+                if (data.rationale) {
+                    var rat = document.createElement('p');
+                    rat.style.cssText = 'font-size:0.85rem;color:#d1d5db;margin:8px 0;text-align:left;';
+                    rat.textContent = data.rationale;
+                    container.appendChild(rat);
+                }
+                // Recommendations
+                (data.recommendations || []).forEach(function(rec) {
+                    var div = document.createElement('div');
+                    div.className = 'optimize-rec rec-' + (rec.priority || 'MEDIUM');
+                    var title = document.createElement('strong');
+                    title.textContent = '[' + (rec.priority || 'MEDIUM') + '] ' + (rec.change || '');
+                    div.appendChild(title);
+                    if (rec.expected_impact) {
+                        var impact = document.createElement('div');
+                        impact.style.cssText = 'margin-top:4px;color:#94a3b8;';
+                        impact.textContent = '\u2192 ' + rec.expected_impact;
+                        div.appendChild(impact);
+                    }
+                    container.appendChild(div);
+                });
+            }).catch(function() {
+                while (container.firstChild) { container.removeChild(container.firstChild); }
+                var err = document.createElement('p');
+                err.style.color = '#f87171';
+                err.textContent = 'Optimization request failed.';
+                container.appendChild(err);
+            });
+        }
 
         // Feature 3: NL Planner
         function askPlainEnglish() {
