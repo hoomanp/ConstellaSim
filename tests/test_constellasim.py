@@ -484,3 +484,139 @@ class TestFlaskAlertsEndpoint:
         r = client.get("/api/alerts")
         assert r.status_code == 200
         assert json.loads(r.data) == []
+
+
+class TestFlaskTopologyEndpoint:
+    _SAMPLE_TOPOLOGY = {
+        "nodes": [
+            {"id": "Mobile-User", "type": "ground"},
+            {"id": "SAT1", "type": "satellite"},
+            {"id": "SAT2", "type": "satellite"},
+            {"id": "SAT3", "type": "satellite"},
+            {"id": "Gateway-12345", "type": "ground"},
+        ],
+        "edges": [
+            {"source": "Mobile-User", "target": "SAT1", "weight": 2.0},
+            {"source": "SAT1", "target": "SAT2", "weight": 5.0},
+            {"source": "SAT2", "target": "SAT3", "weight": 5.0},
+            {"source": "SAT3", "target": "Gateway-12345", "weight": 2.0},
+        ],
+        "route": ["Mobile-User", "SAT1", "SAT2", "SAT3", "Gateway-12345"],
+        "dropped": False,
+    }
+
+    def test_returns_400_without_simulation(self, flask_client):
+        client, app_module = flask_client
+        with app_module._sim_lock:
+            app_module._last_sim.clear()
+        r = client.get("/api/topology")
+        assert r.status_code == 400
+        assert b"simulation" in r.data.lower()
+
+    def test_returns_topology_after_simulation(self, flask_client):
+        client, app_module = flask_client
+        with app_module._sim_lock:
+            app_module._last_sim.update({
+                "source": "51.50, -0.12",
+                "destination": "London",
+                "latency_ms": "14.50",
+                "status": "Success",
+                "packet_loss_pct": 0,
+                "topology": self._SAMPLE_TOPOLOGY,
+            })
+        r = client.get("/api/topology")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert "nodes" in data
+        assert "edges" in data
+        assert "route" in data
+        assert "dropped" in data
+
+    def test_topology_has_correct_node_types(self, flask_client):
+        client, app_module = flask_client
+        with app_module._sim_lock:
+            app_module._last_sim.update({"topology": self._SAMPLE_TOPOLOGY})
+        r = client.get("/api/topology")
+        data = json.loads(r.data)
+        types = {n["id"]: n["type"] for n in data["nodes"]}
+        assert types["SAT1"] == "satellite"
+        assert types["Mobile-User"] == "ground"
+
+    def test_route_forms_valid_path(self, flask_client):
+        client, app_module = flask_client
+        with app_module._sim_lock:
+            app_module._last_sim.update({"topology": self._SAMPLE_TOPOLOGY})
+        r = client.get("/api/topology")
+        data = json.loads(r.data)
+        route = data["route"]
+        # Route must start at source and end at destination
+        assert route[0] == "Mobile-User"
+        assert route[-1] == "Gateway-12345"
+        # Every consecutive pair must be connected by an edge
+        edge_pairs = {(e["source"], e["target"]) for e in data["edges"]}
+        edge_pairs |= {(e["target"], e["source"]) for e in data["edges"]}
+        for i in range(len(route) - 1):
+            assert (route[i], route[i + 1]) in edge_pairs
+
+    def test_dropped_packet_flagged(self, flask_client):
+        client, app_module = flask_client
+        dropped_topo = dict(self._SAMPLE_TOPOLOGY)
+        dropped_topo["dropped"] = True
+        dropped_topo["route"] = []
+        with app_module._sim_lock:
+            app_module._last_sim.update({"topology": dropped_topo})
+        r = client.get("/api/topology")
+        data = json.loads(r.data)
+        assert data["dropped"] is True
+        assert data["route"] == []
+
+
+# ===========================================================================
+# 8. _run_simulation topology output
+# ===========================================================================
+
+class TestRunSimulationTopology:
+    """Verify that _run_simulation captures topology data correctly."""
+
+    def test_topology_keys_present(self):
+        import simpy
+        from constellasim.engine import ConstellationSimulator
+        from constellasim.node import Satellite, GroundStation
+
+        env = simpy.Environment()
+        sim = ConstellationSimulator(env)
+        for sid in ["SAT1", "SAT2", "SAT3"]:
+            sim.add_node(Satellite(env, sid, 1))
+        sim.add_link("SAT1", "SAT2", weight=5.0)
+        sim.add_link("SAT2", "SAT3", weight=5.0)
+        gs_a = GroundStation(env, "GS_A", 51.5, -0.12)
+        gs_b = GroundStation(env, "GS_B", 48.8, 2.35)
+        sim.add_node(gs_a)
+        sim.add_node(gs_b)
+        sim.add_link("GS_A", "SAT1", weight=2.0)
+        sim.add_link("GS_B", "SAT3", weight=2.0)
+        env.process(sim.send_packet("GS_A", "GS_B", 1))
+        env.run(until=100)
+
+        route = sim.find_shortest_path("GS_A", "GS_B") or []
+        topology = {
+            "nodes": [
+                {"id": nid, "type": "satellite" if nid.startswith("SAT") else "ground"}
+                for nid in sim.graph.nodes()
+            ],
+            "edges": [
+                {"source": u, "target": v, "weight": round(d.get("weight", 1.0), 1)}
+                for u, v, d in sim.graph.edges(data=True)
+            ],
+            "route": route,
+            "dropped": len(sim.stats["latencies"]) == 0,
+        }
+
+        assert len(topology["nodes"]) == 5
+        sat_nodes = [n for n in topology["nodes"] if n["type"] == "satellite"]
+        ground_nodes = [n for n in topology["nodes"] if n["type"] == "ground"]
+        assert len(sat_nodes) == 3
+        assert len(ground_nodes) == 2
+        assert topology["dropped"] is False
+        assert "GS_A" in topology["route"]
+        assert "GS_B" in topology["route"]

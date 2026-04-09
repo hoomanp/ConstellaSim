@@ -119,6 +119,22 @@ def _run_simulation(src_lat, src_lon, dest_city):
 
     report = sim.generate_report()
     latency = sim.stats["latencies"][0] if sim.stats["latencies"] else None
+
+    # Feature 7: capture graph topology and active route for the visualizer.
+    route = sim.find_shortest_path(gs_src.node_id, gs_dest.node_id) or []
+    topology = {
+        "nodes": [
+            {"id": nid, "type": "satellite" if nid.startswith("SAT") else "ground"}
+            for nid in sim.graph.nodes()
+        ],
+        "edges": [
+            {"source": u, "target": v, "weight": round(d.get("weight", 1.0), 1)}
+            for u, v, d in sim.graph.edges(data=True)
+        ],
+        "route": route,
+        "dropped": latency is None,
+    }
+
     return {
         "report": report,
         "latency": latency,
@@ -126,6 +142,7 @@ def _run_simulation(src_lat, src_lon, dest_city):
         "dest": f"{dest_city} ({dest_lat:.2f}, {dest_lon:.2f})",
         "dest_lat": dest_lat,
         "dest_lon": dest_lon,
+        "topology": topology,
     }, None
 
 
@@ -163,6 +180,7 @@ def run_sim():
             "latency_ms": f"{result['latency']:.2f}" if result["latency"] else "dropped",
             "status": "Success" if result["latency"] else "Failed",
             "packet_loss_pct": 0 if result["latency"] else 100,
+            "topology": result["topology"],
         })
 
     try:
@@ -214,6 +232,7 @@ def run_sim_stream():
             "latency_ms": f"{result['latency']:.2f}" if result["latency"] else "dropped",
             "status": "Success" if result["latency"] else "Failed",
             "packet_loss_pct": 0 if result["latency"] else 100,
+            "topology": result["topology"],
         })
 
     sim_payload = {
@@ -368,6 +387,17 @@ def plan():
     return jsonify({"error": "Unknown function"}), 422
 
 
+# --- Feature 7: Topology visualizer data ---
+@app.route('/api/topology')
+def topology():
+    """Return current graph topology and active route for the SVG visualizer."""
+    with _sim_lock:
+        topo = _last_sim.get("topology")
+    if not topo:
+        return jsonify({"error": "No simulation data yet. Run a simulation first."}), 400
+    return jsonify(topo)
+
+
 # --- Feature 6: AI Topology Optimizer ---
 @app.route('/api/optimize', methods=['POST'])
 @limiter.limit("10 per minute")
@@ -480,6 +510,11 @@ HTML_TEMPLATE = """
         /* Streaming cursor */
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
         .cursor { display: inline-block; width: 7px; height: 1em; background: #a78bfa; animation: blink 1s step-end infinite; vertical-align: text-bottom; margin-left: 2px; }
+        /* Feature 7: topology map */
+        #topo-card { margin-top: 15px; }
+        #topo-svg { width: 100%; height: 160px; display: block; background: #0f172a; border-radius: 8px; }
+        .topo-title { font-size: 0.85rem; color: #9ca3af; margin-bottom: 6px; text-align: left; }
+        @keyframes dash { to { stroke-dashoffset: -20; } }
     </style>
 </head>
 <body>
@@ -515,6 +550,17 @@ HTML_TEMPLATE = """
         <button class="btn-briefing hidden" id="briefing-btn" onclick="downloadBriefing()">
             &#128196; Download Briefing
         </button>
+    </div>
+
+    <!-- Feature 7: Topology Map -->
+    <div id="topo-card" class="card hidden">
+        <p class="topo-title">&#127759; Live Packet Route</p>
+        <svg id="topo-svg" viewBox="0 0 360 160" xmlns="http://www.w3.org/2000/svg"></svg>
+        <p id="topo-legend" style="font-size:0.75rem;color:#6b7280;text-align:left;margin-top:6px;">
+            <svg width="10" height="10"><circle cx="5" cy="5" r="5" fill="#818cf8"/></svg> Satellite &nbsp;
+            <svg width="12" height="12"><polygon points="6,0 12,12 0,12" fill="#34d399"/></svg> Ground Station &nbsp;
+            <svg width="18" height="8"><line x1="0" y1="4" x2="18" y2="4" stroke="#a78bfa" stroke-width="2"/></svg> Active Route
+        </p>
     </div>
 
     <!-- Results -->
@@ -624,6 +670,7 @@ HTML_TEMPLATE = """
                     document.getElementById('chat-widget').classList.remove('hidden');
                     document.getElementById('optimizer-widget').classList.remove('hidden');
                     status.textContent = "Analysis Complete";
+                    fetchAndRenderTopology();
                 });
 
                 _eventSource.onerror = function() {
@@ -682,6 +729,128 @@ HTML_TEMPLATE = """
                 if (e.key === 'Enter') askPlainEnglish();
             });
         });
+
+        // Feature 7: Topology Map renderer
+        function fetchAndRenderTopology() {
+            fetch('/api/topology').then(function(r) { return r.json(); }).then(function(topo) {
+                document.getElementById('topo-card').classList.remove('hidden');
+                renderTopologySVG(topo);
+            }).catch(function() {});
+        }
+
+        function renderTopologySVG(topo) {
+            var svg = document.getElementById('topo-svg');
+            while (svg.firstChild) { svg.removeChild(svg.firstChild); }
+
+            var W = 360, H = 160;
+            var nodes = topo.nodes || [];
+            var edges = topo.edges || [];
+            var route = topo.route || [];
+            var dropped = topo.dropped || false;
+
+            // Build ordered layout: ground-src, sats (sorted), ground-dst
+            var sats = nodes.filter(function(n) { return n.type === 'satellite'; })
+                            .map(function(n) { return n.id; }).sort();
+            var grounds = nodes.filter(function(n) { return n.type === 'ground'; })
+                               .map(function(n) { return n.id; });
+            var ordered = [grounds[0]].concat(sats).concat([grounds[1]]);
+            var total = ordered.length;
+            var positions = {};
+            ordered.forEach(function(id, i) {
+                positions[id] = {
+                    x: Math.round(30 + (i / (total - 1)) * (W - 60)),
+                    y: H / 2
+                };
+            });
+
+            // Build route edge set for fast lookup
+            var routeEdges = {};
+            for (var i = 0; i < route.length - 1; i++) {
+                routeEdges[route[i] + '|' + route[i + 1]] = true;
+                routeEdges[route[i + 1] + '|' + route[i]] = true;
+            }
+
+            var ns = 'http://www.w3.org/2000/svg';
+
+            // Draw edges
+            edges.forEach(function(e) {
+                var a = positions[e.source], b = positions[e.target];
+                if (!a || !b) return;
+                var isRoute = routeEdges[e.source + '|' + e.target];
+                var line = document.createElementNS(ns, 'line');
+                line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+                line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
+                if (isRoute && !dropped) {
+                    line.setAttribute('stroke', '#a78bfa');
+                    line.setAttribute('stroke-width', '3');
+                    line.setAttribute('stroke-dasharray', '6 4');
+                    line.setAttribute('style', 'animation: dash 0.6s linear infinite;');
+                } else {
+                    line.setAttribute('stroke', '#374151');
+                    line.setAttribute('stroke-width', '1.5');
+                }
+                svg.appendChild(line);
+
+                // Weight label on edge midpoint
+                var lbl = document.createElementNS(ns, 'text');
+                lbl.setAttribute('x', Math.round((a.x + b.x) / 2));
+                lbl.setAttribute('y', Math.round((a.y + b.y) / 2) - 7);
+                lbl.setAttribute('text-anchor', 'middle');
+                lbl.setAttribute('font-size', '9');
+                lbl.setAttribute('fill', isRoute && !dropped ? '#c4b5fd' : '#4b5563');
+                lbl.textContent = e.weight + 'ms';
+                svg.appendChild(lbl);
+            });
+
+            // Draw nodes
+            nodes.forEach(function(n) {
+                var p = positions[n.id];
+                if (!p) return;
+                var inRoute = route.indexOf(n.id) !== -1;
+                if (n.type === 'satellite') {
+                    var circle = document.createElementNS(ns, 'circle');
+                    circle.setAttribute('cx', p.x); circle.setAttribute('cy', p.y);
+                    circle.setAttribute('r', inRoute && !dropped ? 10 : 7);
+                    circle.setAttribute('fill', inRoute && !dropped ? '#6366f1' : '#1e293b');
+                    circle.setAttribute('stroke', inRoute && !dropped ? '#a78bfa' : '#475569');
+                    circle.setAttribute('stroke-width', '2');
+                    svg.appendChild(circle);
+                } else {
+                    // Triangle for ground stations
+                    var sz = inRoute && !dropped ? 12 : 9;
+                    var pts = (p.x) + ',' + (p.y - sz) + ' ' +
+                              (p.x + sz) + ',' + (p.y + sz * 0.6) + ' ' +
+                              (p.x - sz) + ',' + (p.y + sz * 0.6);
+                    var poly = document.createElementNS(ns, 'polygon');
+                    poly.setAttribute('points', pts);
+                    poly.setAttribute('fill', dropped ? '#7f1d1d' : (inRoute ? '#059669' : '#1e293b'));
+                    poly.setAttribute('stroke', dropped ? '#ef4444' : (inRoute ? '#34d399' : '#475569'));
+                    poly.setAttribute('stroke-width', '2');
+                    svg.appendChild(poly);
+                }
+
+                // Node label below
+                var lbl = document.createElementNS(ns, 'text');
+                lbl.setAttribute('x', p.x);
+                lbl.setAttribute('y', p.y + 22);
+                lbl.setAttribute('text-anchor', 'middle');
+                lbl.setAttribute('font-size', '8');
+                lbl.setAttribute('fill', '#9ca3af');
+                lbl.textContent = n.id.length > 10 ? n.id.slice(0, 9) + '\u2026' : n.id;
+                svg.appendChild(lbl);
+            });
+
+            // Dropped indicator
+            if (dropped) {
+                var warn = document.createElementNS(ns, 'text');
+                warn.setAttribute('x', W / 2); warn.setAttribute('y', 20);
+                warn.setAttribute('text-anchor', 'middle');
+                warn.setAttribute('font-size', '11');
+                warn.setAttribute('fill', '#ef4444');
+                warn.textContent = '\u26a0 Packet Dropped';
+                svg.appendChild(warn);
+            }
+        }
 
         // Feature 6: Topology Optimizer
         function runOptimizer() {
