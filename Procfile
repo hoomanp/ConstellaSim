@@ -1,1 +1,1 @@
-web: python mobile_client/app.py
+web: python -m api.main

@@ -10,7 +10,7 @@
   "plugins": {
     "SplashScreen": {
       "launchAutoHide": true,
-      "backgroundColor": "#111827"
+      "backgroundColor": "#05080f"
     }
   },
   "ios": {
@@ -20,6 +20,6 @@
   },
   "android": {
     "allowMixedContent": true,
-    "backgroundColor": "#111827"
+    "backgroundColor": "#05080f"
   }
 }

@@ -1,50 +1,66 @@
-# ConstellaSim: LEO Network Topology Simulator
+# ConstellaSim — Recruiter Demo (v2)
 
-**ConstellaSim** is an advanced discrete-event simulator (DES) for modeling packet-level networking and topology dynamics in Low Earth Orbit (LEO) satellite constellations. It combines SimPy-based network simulation with a multi-cloud RAG AI analyst accessible from any mobile browser.
+**ConstellaSim** is a hiring-ready LEO network lab: a discrete-event packet simulator, live topology visualizer, and streaming AI mission assistant — wrapped for web, iOS, and Android.
+
+> Boot it, tap **Demo mode**, show the route light up, and walk a recruiter through SimPy → NetworkX → SSE → RAG.
 
 ---
 
-## What's Inside
+## Why this stack
 
-| Module | Technology | Purpose |
+| Layer | Choice | Why it impresses |
 |---|---|---|
-| `constellasim/engine.py` | SimPy, NetworkX | Discrete-event simulation, Dijkstra routing |
-| `constellasim/node.py` | SimPy | Satellite and GroundStation node models |
-| `constellasim/llm.py` | Google/Azure/Bedrock | RAG-enabled AI network analyst |
-| `constellasim/planner.py` | LLM + allowlist | NL2Function mission planner |
-| `constellasim/monitor.py` | threading | Background anomaly detection |
-| `constellasim/utils.py` | Geopy | GPS/city geocoding with LRU cache |
-| `mobile_client/app.py` | Flask, SSE | REST + Server-Sent Events API (port 5001) |
-| `mobile/` | Capacitor 7 | Native iOS + Android shell (`com.constellasim.app`) |
+| Simulation core | SimPy + NetworkX | Real DES + Dijkstra routing, not a mock |
+| API | **FastAPI** + Pydantic + SSE | Typed contracts, OpenAPI, streaming |
+| UI | **React 19 + Vite + TypeScript** | Modern SPA with orbital motion UI |
+| Mobile | Capacitor 7 | Same demo on iPhone & Android |
+| AI | Gemini / Azure / Bedrock + **offline demo AI** | Works in interviews even without keys |
 
 ---
 
-## Key Features
+## Quick start (interview laptop)
 
-### Network Simulation Engine
-- **Dijkstra-Powered Routing:** Lowest-latency path discovery across satellite meshes using NetworkX.
-- **ISL & GSL Modeling:** Inter-Satellite Links and Ground-to-Satellite Links with configurable edge weights.
-- **Congestion Simulation:** Per-node `buffer_limit` triggers tail-drop packet loss under load.
-- **Propagation + Processing Delay:** Speed-of-light delay modeled per km, plus random CPU overhead.
-- **Handover Logic:** Ground stations automatically reconnect as satellites transit the field of view.
-- **Analytics Report:** Sent / Received / Dropped counts, average end-to-end latency, packet loss rate.
+```bash
+git clone https://github.com/hoomanp/ConstellaSim.git
+cd ConstellaSim
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 
-### AI / RAG Network Analyst (5 Features)
-1. **Streaming Analysis** — `GET /api/simulate/stream` SSE endpoint: simulation result + AI commentary streamed token-by-token.
-2. **Multi-Turn Chat** — `POST /api/chat` contextual follow-up about the current simulation snapshot (up to 10 turns, server-side session).
-3. **NL2Function Planner** — `POST /api/plan` parses plain English into `simulate` or `topology_info` function calls via AI with strict allowlist validation.
-4. **Anomaly Monitor** — Optional background thread (`ANOMALY_MONITOR=true`) polls simulation state and generates WARNING/CRITICAL alerts accessible at `GET /api/alerts`.
-5. **Network Briefing** — `GET /api/briefing` downloads a structured Markdown report grounded in `knowledge_base/` LEO networking standards.
+# Frontend
+cd web && npm install && npm run build && cd ..
 
-Providers: **Google Gemini 1.5 Flash**, **Azure OpenAI (GPT-4 Turbo)**, **Amazon Bedrock (Claude 3)**.
+# One-port demo (API + UI)
+export PORT=5001
+python -m api.main
+```
 
-### Mobile Web UI
-- GPS-based source node — phone's location sets the origin ground station automatically.
-- NL Planner widget: "Simulate packet from Paris to Tokyo" → executes a full simulation.
-- Streaming AI analysis with blinking cursor animation.
-- Alert badge with polling every 10 seconds.
-- Briefing download button (Markdown report).
-- Multi-turn chat widget with New Chat / Reset.
+Open **http://localhost:5001** — brand hero, then **Mission console**.
+
+Optional live AI (otherwise demo AI kicks in automatically):
+
+```bash
+export GOOGLE_API_KEY=your-key   # or AZURE_* / AWS for Bedrock
+export NETWORK_AI_PROVIDER=google
+```
+
+### Dev mode (hot reload UI)
+
+```bash
+# Terminal A
+python -m api.main
+
+# Terminal B
+cd web && npm run dev   # http://localhost:5173 (proxies /api → :5001)
+```
+
+### Native mobile
+
+```bash
+cd mobile && npm install && npx cap sync
+npx cap open ios      # or: npx cap open android
+```
+
+Launcher → enter LAN IP of the machine running `python -m api.main` → Connect.
 
 ---
 
@@ -52,178 +68,67 @@ Providers: **Google Gemini 1.5 Flash**, **Azure OpenAI (GPT-4 Turbo)**, **Amazon
 
 ```
 ConstellaSim/
-├── constellasim/
-│   ├── engine.py           # ConstellationSimulator: event loop, routing, stats
-│   ├── node.py             # NetworkNode, Satellite, GroundStation
-│   ├── utils.py            # Geocoder (LRU cache, allowlist validation)
-│   ├── llm.py              # NetworkAI: RAG analysis, streaming, chat, briefing
-│   ├── planner.py          # NetworkPlanner: NL2Function with allowlist
-│   └── monitor.py          # AnomalyMonitor: background thread, alert feed
-├── mobile_client/
-│   └── app.py              # Flask REST + SSE + security headers
-├── mobile/                 # Capacitor iOS + Android shell (com.constellasim.app)
-│   ├── www/                # Native launcher (host/port → Flask UI)
-│   ├── ios/                # Xcode project
-│   └── android/            # Android Studio project
-├── knowledge_base/
-│   └── network_standards.txt  # LEO networking benchmarks for RAG grounding
-└── examples/
-    ├── multi_hop_demo.py   # 3-satellite linear chain demo
-    └── advanced_network.py # Multi-city mesh network demo
+├── constellasim/          # Simulation + RAG engine (unchanged domain core)
+├── api/                   # FastAPI backend (v2)
+│   ├── main.py            # Routes, SSE, SPA hosting
+│   ├── simulation.py      # Topology run + city atlas
+│   └── ai_fallback.py     # Offline demo analyst
+├── web/                   # React 19 recruiter UI
+├── mobile/                # Capacitor iOS + Android shell
+├── knowledge_base/        # RAG grounding docs
+└── tests/                 # pytest (engine + API)
 ```
 
-### API Endpoints
+### API
 
-| Method | Endpoint | Description |
+| Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/health` | Readiness probe for native shells / load balancers |
-| `POST` | `/api/simulate` | Blocking simulation: src lat/lon → dest city |
-| `GET` | `/api/simulate/stream` | SSE: simulation result + streaming AI analysis |
-| `POST` | `/api/chat` | Multi-turn AI conversation about current simulation |
-| `POST` | `/api/chat/reset` | Clear session chat history |
-| `POST` | `/api/plan` | NL2Function: plain English → `simulate` or `topology_info` |
-| `GET` | `/api/topology` | Graph + active route for the live packet visualizer |
-| `POST` | `/api/optimize` | AI topology optimizer recommendations |
-| `GET` | `/api/alerts` | Anomaly alert feed (JSON array) |
-| `GET` | `/api/briefing` | Download Markdown network briefing |
+| GET | `/api/health` | Readiness + AI mode |
+| POST | `/api/simulate` | Blocking sim + analysis |
+| GET | `/api/simulate/stream` | SSE sim + token stream |
+| POST | `/api/chat` | Multi-turn follow-ups |
+| POST | `/api/plan` | NL → simulate / topology_info |
+| GET | `/api/topology` | Graph + active route |
+| POST | `/api/optimize` | Mesh recommendations |
+| GET | `/api/alerts` | Anomaly feed |
+| GET | `/api/briefing` | Markdown briefing download |
 
 ---
 
-## Installation
+## Demo script (3 minutes)
 
-```bash
-git clone https://github.com/hoomanp/ConstellaSim.git
-cd ConstellaSim
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-### Run the Examples
-
-```bash
-# 3-satellite linear chain (no API key needed)
-python3 -m examples.multi_hop_demo
-
-# Multi-city mesh network
-python3 -m examples.advanced_network
-```
-
-### Start the Mobile Web App
-
-```bash
-export FLASK_SECRET_KEY=your-secret-key   # required
-export GOOGLE_API_KEY=your-key             # or AZURE_OPENAI_KEY / AWS creds
-export PORT=5001
-python3 mobile_client/app.py
-```
-
-Open `http://localhost:5001` in any browser, or `http://<YOUR_LAN_IP>:5001` on a phone connected to the same network.
-
-### Run as a native iOS / Android app
-
-A Capacitor shell lives in `mobile/` (`com.constellasim.app`). It launches the Flask UI inside a native WebView with GPS + cleartext LAN permissions.
-
-```bash
-# Terminal A — backend on your LAN
-export FLASK_SECRET_KEY=dev-secret
-python3 mobile_client/app.py
-
-# Terminal B — native shell
-cd mobile
-npm install
-npx cap sync
-npx cap open ios      # macOS + Xcode
-# or
-npx cap open android  # Android Studio
-```
-
-In the launcher, enter your machine’s LAN IP (or tap **Local** on a simulator/emulator), then **Connect & Launch**. If GPS is unavailable, use **Demo Mode** (Tarzana, CA) in the web UI.
-
-Full mobile notes: [`mobile/README.md`](mobile/README.md).
+1. Open the hero — call out **ConstellaSim** branding and orbital motion.
+2. Click **Run demo diagnostic** (Tarzana → Tokyo).
+3. Watch **Live packet route** animate; latency metrics populate.
+4. Point at streaming AI critique (demo mode or live provider).
+5. Ask NL planner: “Simulate a packet to Berlin”.
+6. Open optimizer → health score + HIGH/MEDIUM actions.
+7. Optional: launch Capacitor on a phone on the same Wi‑Fi.
 
 ---
 
-## Environment Variables
+## Environment
 
-| Variable | Default | Description |
+| Variable | Default | Notes |
 |---|---|---|
-| `FLASK_SECRET_KEY` | — | **Required.** Cryptographic session key |
-| `PORT` | `5001` | Flask server port |
-| `NETWORK_AI_PROVIDER` | `google` | AI provider: `google`, `azure`, `amazon` |
-| `GOOGLE_API_KEY` | — | Google Gemini 1.5 Flash API key |
-| `AZURE_OPENAI_KEY` | — | Azure OpenAI API key |
-| `AZURE_OPENAI_ENDPOINT` | — | Azure OpenAI endpoint URL |
-| `AZURE_DEPLOYMENT_NAME` | `gpt-4-turbo` | Azure deployment name |
-| `ANOMALY_MONITOR` | `false` | Enable background anomaly monitoring thread |
-| `NOMINATIM_USER_AGENT` | `ConstellaSim/1.0` | Nominatim geocoder user-agent string |
-| `FLASK_DEBUG` | `false` | Development mode (never `true` in production) |
+| `PORT` | `5001` | API listen port |
+| `CONSTELLASIM_SECRET_KEY` / `FLASK_SECRET_KEY` | demo default | Set in shared deploys |
+| `NETWORK_AI_PROVIDER` | `google` | `google` / `azure` / `amazon` |
+| `GOOGLE_API_KEY` | — | Enables live Gemini |
+| `DEMO_LAT` / `DEMO_LON` / `DEMO_LABEL` | Tarzana | Simulator fallback |
+| `ANOMALY_MONITOR` | `false` | Background alerts |
+| `CORS_ORIGINS` | localhost + Capacitor | Comma-separated |
 
 ---
 
-## Tech Stack
+## Tests
 
-**Simulation:** Python 3.9+, SimPy (discrete-event), NetworkX (graph/routing), Geopy (geocoding)
-
-**API/UI:** Flask, flask-limiter (rate limiting), flask-cors, Werkzeug ProxyFix
-
-**Native mobile:** Capacitor 7 (iOS + Android), WebView launcher → Flask UI
-
-**AI:** Google Generative AI (Gemini 1.5 Flash), OpenAI SDK (Azure), Boto3 (Amazon Bedrock)
-
-**Security:** CSP nonces, X-Frame-Options, HSTS, per-request nonce generation, input allowlists, path traversal guards, prompt injection sanitisation
-
----
-
-## Simulation Model
-
-The default topology is a **linear chain**: `GroundStation(src)` → `SAT1` → `SAT2` → `SAT3` → `GroundStation(dest)`.
-
-Link weights (ms):
-- Ground-to-satellite: 2.0 ms base
-- Inter-satellite: 5.0 ms base
-- Each hop adds random processing delay of 0.1–0.3 ms
-
-Packet loss occurs when a destination node's queue exceeds `buffer_limit` (default 100 packets).
-
----
-
-## Changelog
-
-### v1.3 — Native iOS + Android Shell (2026-08)
-- Capacitor mobile app (`mobile/`) for iOS and Android — bundle id `com.constellasim.app`
-- Launcher probes `GET /api/health`, then opens the Flask UI over LAN
-- Demo Mode GPS fallback (Tarzana, CA) when device location is unavailable
-- CORS on `/api/*` for native shell connectivity checks
-- Location + cleartext HTTP permissions for simulator/device LAN backends
-
-### v1.2 — 5 AI Features + Security Audit (2026-02)
-- Feature 1: Streaming SSE AI analysis (`/api/simulate/stream`)
-- Feature 2: Multi-turn chat with server-side session history (`/api/chat`, `/api/chat/reset`)
-- Feature 3: NL2Function network planner with AI allowlist validation (`/api/plan`)
-- Feature 4: Background anomaly monitor thread with alert feed (`/api/alerts`)
-- Feature 5: AI-generated Markdown network briefing download (`/api/briefing`)
-- Security: `FLASK_SECRET_KEY` required at startup
-- Security: CSP nonce headers, X-Frame-Options DENY, HSTS on all responses
-- Security: Rate limiting via flask-limiter (30/min default, 5/min on briefing)
-- Security: Input allowlist on geocoder queries, length caps on all string inputs
-- Security: Prompt injection sanitisation in `_sanitize()` (control chars, Unicode overrides)
-- Security: Path traversal guard on `kb_path` and knowledge base file resolution
-- Optimization: `Geocoder` LRU cache (max 1,000 entries), `NetworkAI` KB loaded once at startup
-- Optimization: Simulation semaphore (max 4 concurrent) prevents CPU overload
-- Fix: `latency` buffer capped at 10,000 samples to prevent unbounded memory growth
-- Fix: `received_packets` log per node capped at 10,000 entries
-
-### v1.1 — Core Fixes
-- Fixed missing `random` import in `node.py` `GroundStation.handover()`
-- Fixed `multi_hop_demo.py`: wrong `send_packet` signature and missing ISL links
-- Fixed `advanced_network.py`: hardcoded node IDs replaced with `gs_src.node_id` / `gs_dest.node_id`
-- Removed unused `numpy`, `matplotlib`, `pandas` from `requirements.txt`
-- `FLASK_DEBUG` environment variable replacing hardcoded `debug=True`
+```bash
+pytest -q
+```
 
 ---
 
 ## License
-MIT License.
 
-## Contact
-**Hooman P.** — [GitHub](https://github.com/hoomanp)
+MIT · **Hooman P.** — [GitHub](https://github.com/hoomanp)
