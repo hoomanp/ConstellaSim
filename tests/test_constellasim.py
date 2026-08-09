@@ -354,6 +354,35 @@ def flask_client():
             yield client, app_module
 
 
+class TestFlaskSecurityAndHealth:
+    def test_security_headers_present(self, flask_client):
+        client, _ = flask_client
+        r = client.get("/")
+        assert "Content-Security-Policy" in r.headers
+        assert "X-Frame-Options" in r.headers
+        assert r.headers["X-Frame-Options"] == "DENY"
+        assert "X-Content-Type-Options" in r.headers
+        assert r.headers["X-Content-Type-Options"] == "nosniff"
+
+    def test_health_endpoint(self, flask_client):
+        client, _ = flask_client
+        r = client.get("/api/health")
+        assert r.status_code == 200
+        payload = json.loads(r.data)
+        assert payload["status"] == "ok"
+        assert payload["service"] == "constellasim"
+        assert "ai" in payload
+        assert payload["demo_location"]["label"]
+
+    def test_home_includes_demo_mode(self, flask_client):
+        client, _ = flask_client
+        r = client.get("/")
+        assert r.status_code == 200
+        assert b"Demo Mode" in r.data
+        assert b"runSimulationDemo" in r.data
+        assert b"Tarzana" in r.data
+
+
 class TestFlaskSimulateEndpoint:
     def test_missing_json_body(self, flask_client):
         client, _ = flask_client
@@ -378,15 +407,6 @@ class TestFlaskSimulateEndpoint:
         r = client.post("/api/simulate",
                         json={"src_lat": 51.5, "src_lon": -0.12, "dest_city": "A" * 101})
         assert r.status_code == 400
-
-    def test_security_headers_present(self, flask_client):
-        client, _ = flask_client
-        r = client.get("/")
-        assert "Content-Security-Policy" in r.headers
-        assert "X-Frame-Options" in r.headers
-        assert r.headers["X-Frame-Options"] == "DENY"
-        assert "X-Content-Type-Options" in r.headers
-        assert r.headers["X-Content-Type-Options"] == "nosniff"
 
 
 class TestFlaskChatEndpoint:

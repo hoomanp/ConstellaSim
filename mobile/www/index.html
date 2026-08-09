@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+  <meta name="color-scheme" content="dark" />
+  <title>ConstellaSim</title>
+  <style>
+    :root {
+      --bg0: #0b1220;
+      --bg1: #111827;
+      --card: #1f2937;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --accent: #8b5cf6;
+      --accent-2: #a78bfa;
+      --ok: #34d399;
+      --bad: #f87171;
+      --border: #374151;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(139, 92, 246, 0.28), transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, rgba(52, 211, 153, 0.12), transparent 45%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      color: var(--text);
+      font-family: "SF Pro Display", "Avenir Next", "Segoe UI", sans-serif;
+    }
+    .shell {
+      max-width: 420px;
+      margin: 0 auto;
+      padding: calc(28px + env(safe-area-inset-top)) 20px calc(28px + env(safe-area-inset-bottom));
+    }
+    .brand {
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 0.78rem;
+      color: var(--accent-2);
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-size: 2rem;
+      line-height: 1.1;
+      margin: 0 0 10px;
+      font-weight: 700;
+    }
+    .lede {
+      color: var(--muted);
+      margin: 0 0 24px;
+      font-size: 0.98rem;
+      line-height: 1.45;
+    }
+    .panel {
+      background: rgba(31, 41, 55, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      backdrop-filter: blur(8px);
+    }
+    label {
+      display: block;
+      text-align: left;
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: #111827;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 1rem;
+      margin-bottom: 12px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 110px;
+      gap: 10px;
+    }
+    button {
+      width: 100%;
+      border: none;
+      border-radius: 999px;
+      padding: 14px 18px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .primary {
+      background: var(--accent);
+      color: white;
+      margin-top: 4px;
+    }
+    .primary:disabled {
+      opacity: 0.55;
+      cursor: wait;
+    }
+    .ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      margin-top: 10px;
+    }
+    .status {
+      min-height: 1.4em;
+      margin-top: 14px;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .status.ok { color: var(--ok); }
+    .status.bad { color: var(--bad); }
+    .hint {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.8rem;
+      line-height: 1.4;
+      text-align: left;
+    }
+    code {
+      color: #c4b5fd;
+      font-size: 0.78rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="brand">ConstellaSim</div>
+    <h1>LEO Network Lab</h1>
+    <p class="lede">Connect this phone to your ConstellaSim backend, then run GPS-based packet diagnostics with live AI analysis.</p>
+
+    <section class="panel">
+      <label for="host">Backend host (LAN IP or domain)</label>
+      <input id="host" type="text" inputmode="url" autocomplete="off" placeholder="192.168.1.42" />
+
+      <label for="port">Port</label>
+      <div class="row">
+        <input id="port" type="number" inputmode="numeric" value="5001" min="1" max="65535" />
+        <button class="ghost" type="button" id="use-local" style="margin-top:0;border-radius:10px;">Local</button>
+      </div>
+
+      <button class="primary" type="button" id="connect">Connect &amp; Launch</button>
+      <button class="ghost" type="button" id="probe">Test Connection</button>
+      <div class="status" id="status">Enter your Mac/PC LAN IP running Flask on port 5001.</div>
+    </section>
+
+    <p class="hint">
+      Start backend: <code>export FLASK_SECRET_KEY=dev python3 mobile_client/app.py</code><br />
+      Same Wi-Fi required. On simulators use Demo Mode after launch if GPS is unavailable.
+    </p>
+  </main>
+
+  <script>
+    (function () {
+      var hostEl = document.getElementById('host');
+      var portEl = document.getElementById('port');
+      var statusEl = document.getElementById('status');
+      var connectBtn = document.getElementById('connect');
+      var probeBtn = document.getElementById('probe');
+
+      var saved = {};
+      try { saved = JSON.parse(localStorage.getItem('constellasim.server') || '{}'); } catch (e) {}
+      hostEl.value = saved.host || '';
+      portEl.value = saved.port || 5001;
+
+      function setStatus(msg, kind) {
+        statusEl.textContent = msg;
+        statusEl.className = 'status' + (kind ? ' ' + kind : '');
+      }
+
+      function baseUrl() {
+        var host = (hostEl.value || '').trim().replace(/^https?:\/\//i, '').replace(/\/$/, '');
+        var port = String(portEl.value || '5001').trim();
+        if (!host) throw new Error('Host is required');
+        if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
+          throw new Error('Port must be 1–65535');
+        }
+        return 'http://' + host + ':' + port;
+      }
+
+      function persist(url) {
+        localStorage.setItem('constellasim.server', JSON.stringify({
+          host: hostEl.value.trim(),
+          port: Number(portEl.value) || 5001,
+          url: url
+        }));
+      }
+
+      async function probe() {
+        var url = baseUrl();
+        setStatus('Checking ' + url + '/api/health …');
+        connectBtn.disabled = true;
+        try {
+          var controller = new AbortController();
+          var timer = setTimeout(function () { controller.abort(); }, 5000);
+          var res = await fetch(url + '/api/health', { signal: controller.signal });
+          clearTimeout(timer);
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          var data = await res.json();
+          if (data.status !== 'ok') throw new Error('Unexpected health payload');
+          persist(url);
+          setStatus('Connected — AI ' + (data.ai ? 'ready' : 'offline') + '. Tap Launch.', 'ok');
+          return url;
+        } catch (err) {
+          setStatus('Cannot reach backend. Same Wi-Fi? Flask running? ' + (err && err.message ? err.message : ''), 'bad');
+          throw err;
+        } finally {
+          connectBtn.disabled = false;
+        }
+      }
+
+      document.getElementById('use-local').addEventListener('click', function () {
+        // iOS Simulator → Mac host; Android Emulator → special alias.
+        var ua = navigator.userAgent || '';
+        if (/Android/i.test(ua)) {
+          hostEl.value = '10.0.2.2';
+        } else {
+          hostEl.value = '127.0.0.1';
+        }
+        portEl.value = 5001;
+        setStatus('Using emulator/simulator loopback host.');
+      });
+
+      probeBtn.addEventListener('click', function () {
+        probe().catch(function () {});
+      });
+
+      connectBtn.addEventListener('click', function () {
+        probe().then(function (url) {
+          setStatus('Launching ConstellaSim…', 'ok');
+          // Full navigation keeps Flask sessions + relative API paths working.
+          window.location.href = url + '/';
+        }).catch(function () {});
+      });
+    })();
+  </script>
+</body>
+</html>

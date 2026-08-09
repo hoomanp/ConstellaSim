@@ -26,3 +26,17 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Mobile / Capacitor
+mobile/node_modules/
+mobile/.capacitor/
+mobile/ios/App/Pods/
+mobile/ios/App/App/public/
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/capacitor-cordova-android-plugins/
+mobile/android/app/src/main/assets/public/
+mobile/android/app/src/main/assets/capacitor.config.json
+mobile/android/app/src/main/assets/capacitor.plugins.json
+mobile/*.log

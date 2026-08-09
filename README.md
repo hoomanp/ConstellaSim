@@ -15,6 +15,7 @@
 | `constellasim/monitor.py` | threading | Background anomaly detection |
 | `constellasim/utils.py` | Geopy | GPS/city geocoding with LRU cache |
 | `mobile_client/app.py` | Flask, SSE | REST + Server-Sent Events API (port 5001) |
+| `mobile/` | Capacitor 7 | Native iOS + Android shell (`com.constellasim.app`) |
 
 ---
 
@@ -60,6 +61,10 @@ ConstellaSim/
 │   └── monitor.py          # AnomalyMonitor: background thread, alert feed
 ├── mobile_client/
 │   └── app.py              # Flask REST + SSE + security headers
+├── mobile/                 # Capacitor iOS + Android shell (com.constellasim.app)
+│   ├── www/                # Native launcher (host/port → Flask UI)
+│   ├── ios/                # Xcode project
+│   └── android/            # Android Studio project
 ├── knowledge_base/
 │   └── network_standards.txt  # LEO networking benchmarks for RAG grounding
 └── examples/
@@ -71,11 +76,14 @@ ConstellaSim/
 
 | Method | Endpoint | Description |
 |---|---|---|
+| `GET` | `/api/health` | Readiness probe for native shells / load balancers |
 | `POST` | `/api/simulate` | Blocking simulation: src lat/lon → dest city |
 | `GET` | `/api/simulate/stream` | SSE: simulation result + streaming AI analysis |
 | `POST` | `/api/chat` | Multi-turn AI conversation about current simulation |
 | `POST` | `/api/chat/reset` | Clear session chat history |
 | `POST` | `/api/plan` | NL2Function: plain English → `simulate` or `topology_info` |
+| `GET` | `/api/topology` | Graph + active route for the live packet visualizer |
+| `POST` | `/api/optimize` | AI topology optimizer recommendations |
 | `GET` | `/api/alerts` | Anomaly alert feed (JSON array) |
 | `GET` | `/api/briefing` | Download Markdown network briefing |
 
@@ -111,6 +119,28 @@ python3 mobile_client/app.py
 
 Open `http://localhost:5001` in any browser, or `http://<YOUR_LAN_IP>:5001` on a phone connected to the same network.
 
+### Run as a native iOS / Android app
+
+A Capacitor shell lives in `mobile/` (`com.constellasim.app`). It launches the Flask UI inside a native WebView with GPS + cleartext LAN permissions.
+
+```bash
+# Terminal A — backend on your LAN
+export FLASK_SECRET_KEY=dev-secret
+python3 mobile_client/app.py
+
+# Terminal B — native shell
+cd mobile
+npm install
+npx cap sync
+npx cap open ios      # macOS + Xcode
+# or
+npx cap open android  # Android Studio
+```
+
+In the launcher, enter your machine’s LAN IP (or tap **Local** on a simulator/emulator), then **Connect & Launch**. If GPS is unavailable, use **Demo Mode** (Tarzana, CA) in the web UI.
+
+Full mobile notes: [`mobile/README.md`](mobile/README.md).
+
 ---
 
 ## Environment Variables
@@ -134,7 +164,9 @@ Open `http://localhost:5001` in any browser, or `http://<YOUR_LAN_IP>:5001` on a
 
 **Simulation:** Python 3.9+, SimPy (discrete-event), NetworkX (graph/routing), Geopy (geocoding)
 
-**API/UI:** Flask, flask-limiter (rate limiting), Werkzeug ProxyFix
+**API/UI:** Flask, flask-limiter (rate limiting), flask-cors, Werkzeug ProxyFix
+
+**Native mobile:** Capacitor 7 (iOS + Android), WebView launcher → Flask UI
 
 **AI:** Google Generative AI (Gemini 1.5 Flash), OpenAI SDK (Azure), Boto3 (Amazon Bedrock)
 
@@ -156,6 +188,13 @@ Packet loss occurs when a destination node's queue exceeds `buffer_limit` (defau
 ---
 
 ## Changelog
+
+### v1.3 — Native iOS + Android Shell (2026-08)
+- Capacitor mobile app (`mobile/`) for iOS and Android — bundle id `com.constellasim.app`
+- Launcher probes `GET /api/health`, then opens the Flask UI over LAN
+- Demo Mode GPS fallback (Tarzana, CA) when device location is unavailable
+- CORS on `/api/*` for native shell connectivity checks
+- Location + cleartext HTTP permissions for simulator/device LAN backends
 
 ### v1.2 — 5 AI Features + Security Audit (2026-02)
 - Feature 1: Streaming SSE AI analysis (`/api/simulate/stream`)

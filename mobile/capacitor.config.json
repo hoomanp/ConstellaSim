@@ -1,0 +1,25 @@
+{
+  "appId": "com.constellasim.app",
+  "appName": "ConstellaSim",
+  "webDir": "www",
+  "server": {
+    "cleartext": true,
+    "androidScheme": "https",
+    "iosScheme": "capacitor"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#111827"
+    }
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "preferredContentMode": "mobile",
+    "scheme": "ConstellaSim"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#111827"
+  }
+}
