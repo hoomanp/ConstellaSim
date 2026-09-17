@@ -244,3 +244,28 @@ class TestExtractCity:
         assert extract_city_from_query("fly to New York please") == "New York"
         assert extract_city_from_query("go to Los Angeles now") == "Los Angeles"
         assert extract_city_from_query("nowhere land") is None
+
+
+class TestNoCommittedSecrets:
+    def test_config_has_no_fixed_demo_secret(self, monkeypatch):
+        monkeypatch.delenv("CONSTELLASIM_SECRET_KEY", raising=False)
+        monkeypatch.delenv("FLASK_SECRET_KEY", raising=False)
+        from api import config
+
+        s1 = config.get_settings()
+        s2 = config.get_settings()
+        assert "change-me" not in s1.secret_key
+        assert "constellasim-demo-secret" not in s1.secret_key
+        # Ephemeral keys differ across calls when unset.
+        assert s1.secret_key != s2.secret_key
+        assert len(s1.secret_key) >= 32
+
+    def test_env_example_has_no_live_values(self):
+        text = open(".env.example", encoding="utf-8").read()
+        assert "AIza" not in text
+        assert "sk-" not in text
+        assert "AKIA" not in text
+        # Keys appear only as commented placeholders / empty assignments.
+        for line in text.splitlines():
+            if "API_KEY" in line or "SECRET" in line:
+                assert line.strip().startswith("#") or line.endswith("=") or "false" in line

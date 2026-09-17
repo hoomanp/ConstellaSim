@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import secrets
 from dataclasses import dataclass
+
+logger = logging.getLogger("constellasim.config")
 
 
 @dataclass(frozen=True)
@@ -22,12 +26,21 @@ class Settings:
     api_key: str | None
 
 
-def get_settings() -> Settings:
+def _resolve_secret_key() -> str:
+    """Load session secret from env, or generate an ephemeral one (never commit secrets)."""
     secret = os.getenv("FLASK_SECRET_KEY") or os.getenv("CONSTELLASIM_SECRET_KEY")
-    if not secret:
-        # Demo-friendly default so recruiters can boot without ceremony.
-        # Override in any shared/production deployment.
-        secret = "constellasim-demo-secret-change-me"
+    if secret:
+        return secret
+    generated = secrets.token_urlsafe(32)
+    logger.warning(
+        "CONSTELLASIM_SECRET_KEY / FLASK_SECRET_KEY unset — using an ephemeral key for this process. "
+        "Set a durable secret in the environment for shared or production deploys."
+    )
+    return generated
+
+
+def get_settings() -> Settings:
+    secret = _resolve_secret_key()
     origins = [
         o.strip()
         for o in os.getenv(
@@ -38,7 +51,9 @@ def get_settings() -> Settings:
         ).split(",")
         if o.strip()
     ]
-    api_key = os.getenv("CONSTELLASIM_API_KEY") or None
+    # Never accept empty API keys from the environment.
+    raw_api_key = (os.getenv("CONSTELLASIM_API_KEY") or "").strip()
+    api_key = raw_api_key or None
     return Settings(
         secret_key=secret,
         # 0.0.0.0 enables phone-on-LAN demos; bind 127.0.0.1 for local-only.

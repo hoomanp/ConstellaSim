@@ -17,6 +17,19 @@ fi
 (cd web && npm run build)
 
 export PORT="${PORT:-5001}"
-export CONSTELLASIM_SECRET_KEY="${CONSTELLASIM_SECRET_KEY:-constellasim-demo-secret-change-me}"
+# Prefer caller-provided secret; otherwise generate an ephemeral one (not committed).
+if [[ -z "${CONSTELLASIM_SECRET_KEY:-}" && -z "${FLASK_SECRET_KEY:-}" ]]; then
+  export CONSTELLASIM_SECRET_KEY
+  CONSTELLASIM_SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+fi
+
+# Optional local overrides (never commit .env)
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+
 echo "ConstellaSim demo → http://127.0.0.1:${PORT}"
 exec python -m api.main

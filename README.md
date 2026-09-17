@@ -129,15 +129,28 @@ export HOST=127.0.0.1   # optional local-only bind
 
 v2 mitigations: SPA path containment, security headers, rate limits (slowapi), optional API key, per-session simulation snapshots (`X-Session-Id`), tightened CORS (no `*` unless `CORS_ALLOW_ALL=true`), Android cleartext limited to debug/local domains, iOS ATS without global arbitrary loads.
 
+## Environment
+
+Copy `.env.example` → `.env` for local keys (`.env` is gitignored — never commit it):
+
+```bash
+cp .env.example .env
+```
+
 | Variable | Default | Notes |
 |---|---|---|
 | `PORT` | `5001` | API listen port |
-| `CONSTELLASIM_SECRET_KEY` / `FLASK_SECRET_KEY` | demo default | Set in shared deploys |
+| `CONSTELLASIM_SECRET_KEY` / `FLASK_SECRET_KEY` | ephemeral if unset | Set for shared deploys |
 | `NETWORK_AI_PROVIDER` | `google` | `google` / `azure` / `amazon` |
-| `GOOGLE_API_KEY` | — | Enables live Gemini |
+| `GOOGLE_API_KEY` | — | Live Gemini — store only in local `.env` |
 | `DEMO_LAT` / `DEMO_LON` / `DEMO_LABEL` | Tarzana | Simulator fallback |
-| `ANOMALY_MONITOR` | `false` | Background alerts |
+| `ANOMALY_MONITOR` | `true` | Background alerts |
 | `CORS_ORIGINS` | localhost + Capacitor | Comma-separated |
+| `REQUIRE_API_KEY` / `CONSTELLASIM_API_KEY` | off | Shared-host gate |
+
+```bash
+./scripts/check-secrets.sh   # fail CI/local if credential patterns appear
+```
 
 ---
 
