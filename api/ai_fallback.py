@@ -33,6 +33,31 @@ class DemoNetworkAI:
 
     def chat(self, messages: list[dict[str, str]]) -> str:
         last = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+        # Support AnomalyMonitor STATUS: prompts in offline demos.
+        if "NOMINAL|WARNING|CRITICAL" in last or "classify the network health" in last.lower():
+            lowered = last.lower()
+            if (
+                '"status": "failed"' in lowered
+                or '"packet_loss_pct": 100' in lowered
+                or '"dropped": true' in lowered
+            ):
+                return (
+                    "STATUS: CRITICAL — Packet delivery failed; "
+                    "path loss or buffer overflow exceeded LEO demo thresholds."
+                )
+            try:
+                import re
+
+                m = re.search(r'"latency_ms":\s*"([0-9.]+)"', last)
+                if m and float(m.group(1)) > 12:
+                    return (
+                        f"STATUS: WARNING — End-to-end latency {m.group(1)} ms "
+                        "exceeds the 12 ms demo threshold for this mesh."
+                    )
+            except Exception:
+                pass
+            return "STATUS: NOMINAL — Metrics within LEO demo thresholds for this session."
+
         return (
             "Demo Mission Assistant: I can discuss latency, loss, and topology trade-offs "
             f"for this session. You asked: “{last[:160]}”. "

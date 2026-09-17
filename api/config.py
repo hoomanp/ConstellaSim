@@ -41,6 +41,6 @@ def get_settings() -> Settings:
         demo_lat=float(os.getenv("DEMO_LAT", "34.1675")),
         demo_lon=float(os.getenv("DEMO_LON", "-118.5504")),
         demo_label=os.getenv("DEMO_LABEL", "Tarzana, CA"),
-        anomaly_monitor=os.getenv("ANOMALY_MONITOR", "").lower() == "true",
+        anomaly_monitor=os.getenv("ANOMALY_MONITOR", "true").lower() in {"1", "true", "yes", "on"},
         max_concurrent_sims=int(os.getenv("MAX_CONCURRENT_SIMS", "4")),
     )

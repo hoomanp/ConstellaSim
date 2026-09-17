@@ -1,27 +1,55 @@
 # ConstellaSim Mobile (iOS + Android)
 
-Capacitor shell that launches the **v2 FastAPI + React** demo UI on a phone or simulator.
+Native Capacitor shells that embed the **React mission console** and talk to the FastAPI backend over LAN.
 
 ## Prerequisites
 
-- Node.js 20+
-- Backend: `python -m api.main` on port **5001** (after `cd web && npm run build`)
-- **iOS:** macOS + Xcode 15+
-- **Android:** Android Studio (API 24+)
+| Platform | Needs |
+|---|---|
+| Both | Node 20+, backend `python -m api.main` on `:5001` |
+| Android | Android Studio / SDK 35 (debug APK builds in CI-like Linux) |
+| iOS | **macOS + Xcode 15+** + CocoaPods (`pod install`) |
 
-## Quick start
+## Sync & open
 
 ```bash
-# Backend (repo root) — serves API + built React UI
+# Terminal A — API (same Wi‑Fi as the phone)
 ./scripts/demo.sh
 
-# Native shell
+# Terminal B — embed UI + sync native projects
+./scripts/mobile-sync.sh
 cd mobile
-npm install
-npx cap sync
-npx cap open ios      # or android
+npx cap open android   # or: npx cap open ios
 ```
 
-Enter the laptop LAN IP in the launcher (or **Local** on simulator/emulator).
+### First launch on device / emulator
+1. Tap **⚙ Settings**
+2. Set API base URL:
+   - Android emulator: `http://10.0.2.2:5001`
+   - iOS Simulator: `http://127.0.0.1:5001`
+   - Physical device: `http://<your-laptop-LAN-IP>:5001`
+3. **Save & reconnect** → run **Demo mode**
+
+### Android debug APK (this environment verified)
+```bash
+cd mobile/android
+./gradlew assembleDebug
+# → app/build/outputs/apk/debug/app-debug.apk
+```
+
+### iOS (Mac only)
+```bash
+cd mobile/ios/App
+pod install
+open App.xcworkspace
+# Run on Simulator or device; allow Location when prompted
+```
+
+## Features covered in the native shell
+- Demo / GPS diagnostic (Capacitor Geolocation when available)
+- Live topology map + SSE AI stream
+- NL planner, chat, optimizer, briefing download
+- Anomaly alerts (`POST /api/alerts/evaluate` after each run)
+- Backend URL settings for LAN demos
 
 Bundle ID: `com.constellasim.app`

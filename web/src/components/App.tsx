@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  downloadBriefing,
+  evaluateAlerts,
   fetchAlerts,
   fetchHealth,
+  getApiBase,
+  isNativeApp,
   optimize,
   planMission,
   resetChat,
   sendChat,
+  setApiBase,
   streamSimulation,
   type Health,
   type OptimizeResult,
@@ -16,15 +21,17 @@ import { useGeolocation } from "../hooks/useGeolocation";
 import { TopologyMap } from "./TopologyMap";
 
 export function App() {
-  const geo = useGeolocation();
+  const { geo, refresh: refreshGeo } = useGeolocation();
   const [health, setHealth] = useState<Health | null>(null);
+  const [apiBaseInput, setApiBaseInput] = useState(getApiBase());
+  const [showSettings, setShowSettings] = useState(false);
   const [dest, setDest] = useState("Tokyo");
   const [status, setStatus] = useState("Standing by");
   const [result, setResult] = useState<SimResult | null>(null);
   const [topology, setTopology] = useState<Topology | null>(null);
   const [aiText, setAiText] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [nl, setNl] = useState('Simulate a packet from Tarzana to Singapore');
+  const [nl, setNl] = useState("Simulate a packet from Tarzana to Singapore");
   const [nlOut, setNlOut] = useState("");
   const [chatInput, setChatInput] = useState("");
   const [chat, setChat] = useState<{ role: "user" | "ai"; text: string }[]>([]);
@@ -34,13 +41,25 @@ export function App() {
   const [showAlerts, setShowAlerts] = useState(false);
   const esRef = useRef<EventSource | null>(null);
 
+  async function probeHealth() {
+    try {
+      const h = await fetchHealth();
+      setHealth(h);
+      setStatus(`Connected · AI ${h.ai_mode}${h.anomaly_monitor ? " · alerts on" : ""}`);
+      return true;
+    } catch {
+      setHealth(null);
+      setStatus("API offline — set backend URL in Settings or run python -m api.main");
+      if (isNativeApp()) setShowSettings(true);
+      return false;
+    }
+  }
+
   useEffect(() => {
-    fetchHealth()
-      .then(setHealth)
-      .catch(() => setStatus("API offline — start `python -m api.main`"));
+    void probeHealth();
     const t = setInterval(() => {
       fetchAlerts().then(setAlerts).catch(() => undefined);
-    }, 10000);
+    }, 8000);
     fetchAlerts().then(setAlerts).catch(() => undefined);
     return () => {
       clearInterval(t);
@@ -50,13 +69,25 @@ export function App() {
 
   function coordsForRun(demo: boolean) {
     if (demo && health) {
-      return { lat: health.demo_location.lat, lon: health.demo_location.lon, label: health.demo_location.label };
+      return {
+        lat: health.demo_location.lat,
+        lon: health.demo_location.lon,
+        label: health.demo_location.label,
+      };
     }
     if (geo.status === "ready") {
-      return { lat: geo.lat, lon: geo.lon, label: "Device GPS" };
+      return {
+        lat: geo.lat,
+        lon: geo.lon,
+        label: geo.source === "capacitor" ? "Device GPS (Capacitor)" : "Device GPS",
+      };
     }
     if (health) {
-      return { lat: health.demo_location.lat, lon: health.demo_location.lon, label: `${health.demo_location.label} (fallback)` };
+      return {
+        lat: health.demo_location.lat,
+        lon: health.demo_location.lon,
+        label: `${health.demo_location.label} (fallback)`,
+      };
     }
     return { lat: 34.1675, lon: -118.5504, label: "Tarzana, CA" };
   }
@@ -77,6 +108,9 @@ export function App() {
       onDone: () => {
         setStreaming(false);
         setStatus("Analysis complete");
+        evaluateAlerts()
+          .then(setAlerts)
+          .catch(() => undefined);
       },
       onError: (msg) => {
         setStreaming(false);
@@ -100,6 +134,7 @@ export function App() {
           topology: data.topology,
         });
       }
+      evaluateAlerts().then(setAlerts).catch(() => undefined);
     } catch (e) {
       setNlOut(e instanceof Error ? e.message : "Plan failed");
     }
@@ -130,6 +165,31 @@ export function App() {
     }
   }
 
+  async function onBriefing() {
+    try {
+      await downloadBriefing();
+      setStatus("Briefing downloaded");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Briefing failed");
+    }
+  }
+
+  async function saveSettings() {
+    setApiBase(apiBaseInput);
+    setShowSettings(false);
+    const ok = await probeHealth();
+    if (ok) refreshGeo();
+  }
+
+  const geoLabel =
+    geo.status === "ready"
+      ? `${geo.lat.toFixed(2)}, ${geo.lon.toFixed(2)} (${geo.source})`
+      : geo.status === "pending"
+        ? "Acquiring…"
+        : geo.status === "denied"
+          ? "Denied — use Demo mode"
+          : "Unavailable — use Demo mode";
+
   return (
     <div className="app-shell">
       <div className="starfield" aria-hidden>
@@ -144,6 +204,15 @@ export function App() {
         onClick={() => setShowAlerts((v) => !v)}
       >
         <span>{alerts.length}</span> alert{alerts.length === 1 ? "" : "s"}
+      </button>
+
+      <button
+        type="button"
+        className="settings-pill"
+        onClick={() => setShowSettings((v) => !v)}
+        aria-label="Backend settings"
+      >
+        ⚙
       </button>
 
       <div className="content">
@@ -169,12 +238,47 @@ export function App() {
             <div>
               <h2>Mission console</h2>
               <p>
-                GPS source → Dijkstra ISL path → SimPy hop delays → SSE AI critique. AI mode:{" "}
-                <strong>{health?.ai_mode ?? "…"}</strong>
-                {health ? ` · v${health.version}` : ""}
+                GPS → Dijkstra ISL → SimPy hops → SSE AI. Mode:{" "}
+                <strong>{health?.ai_mode ?? "offline"}</strong>
+                {health ? ` · v${health.version}` : ""} · GPS {geoLabel}
               </p>
             </div>
           </div>
+
+          {showSettings && (
+            <div className="panel" style={{ marginBottom: 16 }}>
+              <h3>Backend connection</h3>
+              <p style={{ color: "#8b9bb4", fontSize: "0.9rem", marginTop: 0 }}>
+                Native apps need your laptop LAN IP running <code>python -m api.main</code>. Leave
+                blank when the UI is served from the same host.
+              </p>
+              <div className="field">
+                <label htmlFor="apiBase">API base URL</label>
+                <input
+                  id="apiBase"
+                  value={apiBaseInput}
+                  onChange={(e) => setApiBaseInput(e.target.value)}
+                  placeholder="http://192.168.1.42:5001"
+                />
+              </div>
+              <div className="actions">
+                <button type="button" className="btn btn-primary" onClick={saveSettings}>
+                  Save &amp; reconnect
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setApiBaseInput("");
+                    setApiBase("");
+                    void probeHealth();
+                  }}
+                >
+                  Use same origin
+                </button>
+              </div>
+            </div>
+          )}
 
           {showAlerts && alerts.length > 0 && (
             <div className="panel" style={{ marginBottom: 16 }}>
@@ -206,9 +310,9 @@ export function App() {
                 <button type="button" className="btn btn-ghost" onClick={() => runDiagnostic(true)}>
                   Demo mode
                 </button>
-                <a className="btn btn-ghost" href="/api/briefing" style={{ textDecoration: "none" }}>
+                <button type="button" className="btn btn-ghost" onClick={onBriefing}>
                   Briefing
-                </a>
+                </button>
               </div>
               <div className="status-line">{status}</div>
               {result && (
@@ -251,7 +355,14 @@ export function App() {
                   Ask AI
                 </button>
                 {nlOut && (
-                  <pre style={{ marginTop: 10, whiteSpace: "pre-wrap", color: "#8b9bb4", fontSize: "0.82rem" }}>
+                  <pre
+                    style={{
+                      marginTop: 10,
+                      whiteSpace: "pre-wrap",
+                      color: "#8b9bb4",
+                      fontSize: "0.82rem",
+                    }}
+                  >
                     {nlOut}
                   </pre>
                 )}
@@ -295,7 +406,11 @@ export function App() {
               <h3>Topology optimizer</h3>
               <div className="field">
                 <label htmlFor="opt">Goal</label>
-                <input id="opt" value={constraints} onChange={(e) => setConstraints(e.target.value)} />
+                <input
+                  id="opt"
+                  value={constraints}
+                  onChange={(e) => setConstraints(e.target.value)}
+                />
               </div>
               <button type="button" className="btn btn-ghost" onClick={onOptimize}>
                 Optimize mesh
@@ -308,7 +423,9 @@ export function App() {
                   <p style={{ color: "#c5d0e0", fontSize: "0.92rem" }}>{opt.rationale}</p>
                   {opt.recommendations.map((r, i) => (
                     <div key={i} className={`rec ${r.priority || "MEDIUM"}`}>
-                      <strong>[{r.priority}] {r.change}</strong>
+                      <strong>
+                        [{r.priority}] {r.change}
+                      </strong>
                       <div style={{ color: "#8b9bb4", marginTop: 4 }}>→ {r.expected_impact}</div>
                     </div>
                   ))}

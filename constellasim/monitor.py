@@ -10,6 +10,7 @@ in the environment.
 
 import json
 import logging
+import os
 import threading
 import time
 from collections import deque
@@ -18,10 +19,11 @@ from datetime import datetime, timezone
 logger = logging.getLogger(__name__)
 
 # Thresholds for triggering anomaly evaluation
-_PACKET_LOSS_PCT_HIGH = 20.0
-_LATENCY_MS_HIGH = 30.0
+_PACKET_LOSS_PCT_HIGH = float(os.getenv("ANOMALY_LOSS_PCT", "20.0"))
+# Default 12 ms so typical 3-hop demo runs (~14 ms) surface a WARNING for recruiters.
+_LATENCY_MS_HIGH = float(os.getenv("ANOMALY_LATENCY_MS", "12.0"))
 
-_MONITOR_INTERVAL_SECONDS = 30
+_MONITOR_INTERVAL_SECONDS = int(os.getenv("ANOMALY_INTERVAL_SECONDS", "30"))
 
 _SHORT_PROMPT = (
     "You are a satellite network monitor. Given the following simulation metrics, "
@@ -63,6 +65,11 @@ class AnomalyMonitor:
         """Return a snapshot of current alerts as a list (newest first)."""
         with self._lock:
             return list(reversed(self._alerts))
+
+    def evaluate_now(self):
+        """Run one evaluation immediately (used by demo / mobile after a sim)."""
+        self._evaluate()
+        return self.get_alerts()
 
     def _run(self):
         while self._running:

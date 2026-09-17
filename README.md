@@ -56,11 +56,20 @@ cd web && npm run dev   # http://localhost:5173 (proxies /api → :5001)
 ### Native mobile
 
 ```bash
-cd mobile && npm install && npx cap sync
-npx cap open ios      # or: npx cap open android
+./scripts/demo.sh                 # API + UI on :5001
+./scripts/mobile-sync.sh          # build React → Capacitor www + sync
+cd mobile && npx cap open ios     # Mac + Xcode
+# or
+cd mobile && npx cap open android
 ```
 
-Launcher → enter LAN IP of the machine running `python -m api.main` → Connect.
+In the app: **⚙ Settings** → set LAN API URL → **Demo mode**.
+
+Feature smoke test (API):
+
+```bash
+./scripts/test-features.sh http://127.0.0.1:5001
+```
 
 ---
 

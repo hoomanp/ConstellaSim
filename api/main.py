@@ -301,6 +301,15 @@ def alerts():
     return state.monitor.get_alerts()
 
 
+@app.post("/api/alerts/evaluate")
+def alerts_evaluate():
+    """Force an immediate anomaly evaluation (mobile / demo UX)."""
+    if state.monitor is None:
+        return {"alerts": [], "monitor": False}
+    alerts_list = state.monitor.evaluate_now()
+    return {"alerts": alerts_list, "monitor": True}
+
+
 @app.get("/api/briefing")
 def briefing():
     if state.ai is None:

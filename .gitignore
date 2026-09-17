@@ -44,4 +44,9 @@ mobile/*.log
 # Web (Vite)
 web/node_modules/
 web/dist/
+
+# Android build outputs
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/.gradle/
 web/*.tsbuildinfo

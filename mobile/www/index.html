@@ -1,124 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
-  <meta name="color-scheme" content="dark" />
-  <title>ConstellaSim</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700&family=Syne:wght@800&display=swap" rel="stylesheet" />
-  <style>
-    :root {
-      --void: #05080f;
-      --ice: #e8eef7;
-      --muted: #8b9bb4;
-      --signal: #3ee0c5;
-      --line: rgba(120, 160, 200, 0.18);
-    }
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0; min-height: 100%;
-      font-family: "Outfit", sans-serif; color: var(--ice);
-      background:
-        radial-gradient(900px 500px at 10% -10%, rgba(62,224,197,.2), transparent 55%),
-        linear-gradient(180deg, #05080f, #0a1628);
-    }
-    .shell { max-width: 420px; margin: 0 auto; padding: calc(28px + env(safe-area-inset-top)) 20px 32px; }
-    .brand { font-family: "Syne", sans-serif; font-weight: 800; font-size: 2.2rem; margin: 0 0 8px;
-      background: linear-gradient(120deg, #f5f8ff, #9ef5e4 60%, #f0b429); -webkit-background-clip: text; background-clip: text; color: transparent; }
-    .lede { color: var(--muted); line-height: 1.45; margin: 0 0 22px; }
-    .panel { background: rgba(12,24,42,.8); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
-    label { display:block; font-size:.8rem; color: var(--muted); margin-bottom: 6px; }
-    input { width:100%; border-radius: 10px; border:1px solid var(--line); background:#05080f; color:var(--ice); padding:12px 14px; margin-bottom:12px; font:inherit; }
-    .row { display:grid; grid-template-columns:1fr 110px; gap:10px; }
-    button { width:100%; border:0; border-radius:999px; padding:14px 18px; font:inherit; font-weight:700; cursor:pointer; }
-    .primary { background: var(--signal); color:#042019; }
-    .ghost { background: transparent; color: var(--muted); border:1px solid var(--line); margin-top:10px; }
-    .status { margin-top:14px; min-height:1.3em; color: var(--muted); font-size:.9rem; }
-    .status.ok { color:#4ade80; } .status.bad { color:#ff6b6b; }
-    .hint { margin-top:18px; color:var(--muted); font-size:.8rem; line-height:1.4; }
-    code { color:#9ef5e4; }
-  </style>
-</head>
-<body>
-  <main class="shell">
-    <h1 class="brand">ConstellaSim</h1>
-    <p class="lede">Connect this device to your demo backend, then launch the mission console.</p>
-    <section class="panel">
-      <label for="host">Backend host</label>
-      <input id="host" type="text" inputmode="url" placeholder="192.168.1.42" />
-      <label for="port">Port</label>
-      <div class="row">
-        <input id="port" type="number" value="5001" min="1" max="65535" />
-        <button class="ghost" type="button" id="use-local" style="margin-top:0;border-radius:10px;">Local</button>
-      </div>
-      <button class="primary" type="button" id="connect">Connect &amp; Launch</button>
-      <button class="ghost" type="button" id="probe">Test Connection</button>
-      <div class="status" id="status">Same Wi‑Fi as the laptop running <code>python -m api.main</code>.</div>
-    </section>
-    <p class="hint">Simulators: tap Local. If GPS is unavailable, use Demo mode in the web UI.</p>
-  </main>
-  <script>
-    (function () {
-      var hostEl = document.getElementById('host');
-      var portEl = document.getElementById('port');
-      var statusEl = document.getElementById('status');
-      var connectBtn = document.getElementById('connect');
-      var saved = {};
-      try { saved = JSON.parse(localStorage.getItem('constellasim.server') || '{}'); } catch (e) {}
-      hostEl.value = saved.host || '';
-      portEl.value = saved.port || 5001;
-      function setStatus(msg, kind) {
-        statusEl.textContent = msg;
-        statusEl.className = 'status' + (kind ? ' ' + kind : '');
-      }
-      function baseUrl() {
-        var host = (hostEl.value || '').trim().replace(/^https?:\/\//i, '').replace(/\/$/, '');
-        var port = String(portEl.value || '5001').trim();
-        if (!host) throw new Error('Host is required');
-        return 'http://' + host + ':' + port;
-      }
-      function persist(url) {
-        localStorage.setItem('constellasim.server', JSON.stringify({
-          host: hostEl.value.trim(), port: Number(portEl.value) || 5001, url: url
-        }));
-      }
-      async function probe() {
-        var url = baseUrl();
-        setStatus('Checking ' + url + '/api/health …');
-        connectBtn.disabled = true;
-        try {
-          var controller = new AbortController();
-          var timer = setTimeout(function () { controller.abort(); }, 5000);
-          var res = await fetch(url + '/api/health', { signal: controller.signal });
-          clearTimeout(timer);
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          var data = await res.json();
-          if (data.status !== 'ok') throw new Error('Unexpected health payload');
-          persist(url);
-          setStatus('Connected — AI mode ' + (data.ai_mode || 'unknown') + '. Tap Launch.', 'ok');
-          return url;
-        } catch (err) {
-          setStatus('Cannot reach backend. ' + (err && err.message ? err.message : ''), 'bad');
-          throw err;
-        } finally {
-          connectBtn.disabled = false;
-        }
-      }
-      document.getElementById('use-local').addEventListener('click', function () {
-        hostEl.value = /Android/i.test(navigator.userAgent || '') ? '10.0.2.2' : '127.0.0.1';
-        portEl.value = 5001;
-        setStatus('Using emulator/simulator loopback host.');
-      });
-      document.getElementById('probe').addEventListener('click', function () { probe().catch(function () {}); });
-      connectBtn.addEventListener('click', function () {
-        probe().then(function (url) {
-          setStatus('Launching ConstellaSim…', 'ok');
-          window.location.href = url + '/';
-        }).catch(function () {});
-      });
-    })();
-  </script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#05080f" />
+    <meta name="description" content="ConstellaSim — LEO constellation packet-route simulator with AI mission assistant" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+    <title>ConstellaSim</title>
+    <script type="module" crossorigin src="/assets/index-BIu8wctD.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-D0ELkUBd.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>

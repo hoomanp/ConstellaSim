@@ -108,3 +108,23 @@ class TestChatAndTopology:
         topo = r.json()
         assert len(topo["nodes"]) >= 4
         assert "route" in topo
+
+    def test_alerts_evaluate(self, client):
+        client.post(
+            "/api/simulate",
+            json={"src_lat": 34.16, "src_lon": -118.55, "dest_city": "Tokyo"},
+        )
+        r = client.post("/api/alerts/evaluate")
+        assert r.status_code == 200
+        body = r.json()
+        assert "alerts" in body
+        assert body["monitor"] is True
+
+    def test_briefing(self, client):
+        client.post(
+            "/api/simulate",
+            json={"src_lat": 34.16, "src_lon": -118.55, "dest_city": "London"},
+        )
+        r = client.get("/api/briefing")
+        assert r.status_code == 200
+        assert "Briefing" in r.text or "ConstellaSim" in r.text
