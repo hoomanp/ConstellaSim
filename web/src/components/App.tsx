@@ -175,7 +175,12 @@ export function App() {
   }
 
   async function saveSettings() {
-    setApiBase(apiBaseInput);
+    try {
+      setApiBase(apiBaseInput);
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Invalid API URL");
+      return;
+    }
     setShowSettings(false);
     const ok = await probeHealth();
     if (ok) refreshGeo();

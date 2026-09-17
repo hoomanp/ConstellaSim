@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import secrets
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+from starlette.middleware.base import BaseHTTPMiddleware
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -29,11 +35,65 @@ from api.schemas import (
     SimulateRequest,
     SimulateResponse,
 )
-from api.simulation import remember_simulation, resolve_city, run_simulation
+from api.simulation import (
+    extract_city_from_query,
+    remember_simulation,
+    resolve_city,
+    run_simulation,
+)
 from api.state import state
 
 logger = logging.getLogger("constellasim.api")
 WEB_DIST = ROOT / "web" / "dist"
+_SESSION_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
+
+
+def _session_id(x_session_id: str | None, fallback: str | None = None) -> str | None:
+    raw = (x_session_id or fallback or "").strip()
+    if not raw:
+        return None
+    if not _SESSION_RE.match(raw):
+        raise HTTPException(status_code=400, detail="Invalid X-Session-Id")
+    return raw
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com data:; "
+            "img-src 'self' data:; "
+            "connect-src 'self' http: https:; "
+            "frame-ancestors 'none'",
+        )
+        # HSTS only meaningful over HTTPS; harmless on HTTP demos.
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=63072000; includeSubDomains"
+        )
+        return response
+
+
+class OptionalApiKeyMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        settings = state.settings
+        if settings.require_api_key and request.url.path.startswith("/api/"):
+            if request.url.path == "/api/health":
+                return await call_next(request)
+            provided = request.headers.get("X-API-Key") or request.query_params.get("api_key")
+            if not settings.api_key or not provided or not secrets.compare_digest(
+                provided, settings.api_key
+            ):
+                return Response(content='{"detail":"Unauthorized"}', status_code=401, media_type="application/json")
+        return await call_next(request)
 
 
 @asynccontextmanager
@@ -49,19 +109,28 @@ app = FastAPI(
     version=__version__,
     lifespan=lifespan,
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 _settings = get_settings()
+_cors_origins = list(_settings.cors_origins)
+if _settings.cors_allow_all:
+    _cors_origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_settings.cors_origins + ["*"],
+    allow_origins=_cors_origins,
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Accept", "X-Session-Id", "X-API-Key"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(OptionalApiKeyMiddleware)
 
 
 @app.get("/api/health", response_model=HealthResponse)
-def health():
+@limiter.exempt
+def health(request: Request):
     return HealthResponse(
         status="ok",
         service="constellasim",
@@ -78,14 +147,20 @@ def health():
 
 
 @app.post("/api/simulate", response_model=SimulateResponse)
-def simulate(body: SimulateRequest):
+@limiter.limit("30/minute")
+def simulate(
+    request: Request,
+    body: SimulateRequest,
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+):
+    sid = _session_id(x_session_id)
     dest = _sanitize(body.dest_city)
     result, err = run_simulation(body.src_lat, body.src_lon, dest)
     if err:
         code = 503 if "busy" in err else 400
         raise HTTPException(status_code=code, detail=err)
 
-    remember_simulation(result)
+    remember_simulation(result, session_id=sid)
     try:
         analysis = state.ai.analyze_report(result["report"]) if state.ai else "AI unavailable"
     except Exception:
@@ -112,11 +187,16 @@ def simulate(body: SimulateRequest):
 
 
 @app.get("/api/simulate/stream")
+@limiter.limit("30/minute")
 def simulate_stream(
+    request: Request,
     src_lat: float = Query(...),
     src_lon: float = Query(...),
     dest_city: str = Query("New York"),
+    session_id: str | None = Query(default=None),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
 ):
+    sid = _session_id(x_session_id, session_id)
     if not (-90 <= src_lat <= 90) or not (-180 <= src_lon <= 180):
         raise HTTPException(status_code=400, detail="Coordinates out of range")
     dest = _sanitize((dest_city or "").strip()[:100])
@@ -127,7 +207,7 @@ def simulate_stream(
     if err:
         raise HTTPException(status_code=503 if "busy" in err else 400, detail=err)
 
-    remember_simulation(result)
+    remember_simulation(result, session_id=sid)
     payload = {
         "status": "Success" if result["latency"] else "Failed",
         "source": result["src"],
@@ -157,17 +237,21 @@ def simulate_stream(
 
 
 @app.post("/api/chat")
-def chat(body: ChatRequest):
+@limiter.limit("30/minute")
+def chat(
+    request: Request,
+    body: ChatRequest,
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+):
     if state.ai is None:
         raise HTTPException(status_code=503, detail="AI not configured")
     msg = _sanitize(body.message.strip()[:1000])
-    sid = _sanitize(body.session_id)[:64] or "default"
+    sid = _session_id(x_session_id, body.session_id) or "default"
 
     with state.chat_lock:
         history = list(state.chat_sessions.get(sid, []))
         if not history:
-            with state.sim_lock:
-                snapshot = dict(state.last_sim)
+            snapshot = state.get_sim(sid)
             history = [{
                 "role": "system",
                 "content": (
@@ -194,32 +278,37 @@ def chat(body: ChatRequest):
 
 
 @app.post("/api/chat/reset")
-def chat_reset(session_id: str = Query("default")):
-    sid = _sanitize(session_id)[:64] or "default"
+@limiter.limit("30/minute")
+def chat_reset(
+    request: Request,
+    session_id: str = Query("default"),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+):
+    sid = _session_id(x_session_id, session_id) or "default"
     with state.chat_lock:
         state.chat_sessions.pop(sid, None)
     return {"status": "ok"}
 
 
 @app.post("/api/plan")
-def plan(body: PlanRequest):
+@limiter.limit("20/minute")
+def plan(
+    request: Request,
+    body: PlanRequest,
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+):
     if state.planner is None:
         raise HTTPException(status_code=503, detail="AI not configured")
+    sid = _session_id(x_session_id)
     intent = state.planner.parse(body.query.strip())
     func = intent.get("function")
     params = intent.get("params", {})
     if not func:
-        # Demo-friendly heuristic when LLM returns null
         q = body.query.lower()
         if "simulat" in q or "packet" in q or "send" in q:
-            for city in ("tokyo", "london", "paris", "berlin", "singapore", "sydney"):
-                if city in q:
-                    func = "simulate"
-                    params = {"dest_city": city.title()}
-                    break
-            if not func:
-                func = "simulate"
-                params = {"dest_city": "Tokyo"}
+            city = extract_city_from_query(body.query)
+            func = "simulate"
+            params = {"dest_city": city or "Tokyo"}
         elif "topolog" in q or "satellite" in q:
             func = "topology_info"
             params = {"sat_count": 3}
@@ -243,7 +332,7 @@ def plan(body: PlanRequest):
         result, err = run_simulation(src_lat, src_lon, dest_city)
         if err:
             raise HTTPException(status_code=503 if "busy" in err else 400, detail=err)
-        remember_simulation(result)
+        remember_simulation(result, session_id=sid)
         return {
             "function": "simulate",
             "source": result["src"],
@@ -270,20 +359,30 @@ def plan(body: PlanRequest):
 
 
 @app.get("/api/topology")
-def topology():
-    with state.sim_lock:
-        topo = state.last_sim.get("topology")
+@limiter.limit("60/minute")
+def topology(
+    request: Request,
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+):
+    sid = _session_id(x_session_id)
+    snapshot = state.get_sim(sid)
+    topo = snapshot.get("topology")
     if not topo:
         raise HTTPException(status_code=400, detail="No simulation data yet. Run a simulation first.")
     return topo
 
 
 @app.post("/api/optimize")
-def optimize(body: OptimizeRequest):
+@limiter.limit("10/minute")
+def optimize(
+    request: Request,
+    body: OptimizeRequest,
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+):
     if state.ai is None:
         raise HTTPException(status_code=503, detail="AI not configured")
-    with state.sim_lock:
-        snapshot = dict(state.last_sim)
+    sid = _session_id(x_session_id)
+    snapshot = state.get_sim(sid)
     if not snapshot:
         raise HTTPException(status_code=400, detail="No simulation data yet. Run a simulation first.")
     constraints = _sanitize((body.constraints or "").strip()[:300])
@@ -295,14 +394,16 @@ def optimize(body: OptimizeRequest):
 
 
 @app.get("/api/alerts")
-def alerts():
+@limiter.limit("60/minute")
+def alerts(request: Request):
     if state.monitor is None:
         return []
     return state.monitor.get_alerts()
 
 
 @app.post("/api/alerts/evaluate")
-def alerts_evaluate():
+@limiter.limit("20/minute")
+def alerts_evaluate(request: Request):
     """Force an immediate anomaly evaluation (mobile / demo UX)."""
     if state.monitor is None:
         return {"alerts": [], "monitor": False}
@@ -311,11 +412,15 @@ def alerts_evaluate():
 
 
 @app.get("/api/briefing")
-def briefing():
+@limiter.limit("5/minute")
+def briefing(
+    request: Request,
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+):
     if state.ai is None:
         raise HTTPException(status_code=503, detail="AI not configured")
-    with state.sim_lock:
-        snapshot = dict(state.last_sim)
+    sid = _session_id(x_session_id)
+    snapshot = state.get_sim(sid)
     if not snapshot:
         raise HTTPException(status_code=400, detail="No simulation data yet. Run a simulation first.")
     try:
@@ -331,12 +436,32 @@ def briefing():
 
 
 @app.get("/api/demo-location")
-def demo_location():
+@limiter.exempt
+def demo_location(request: Request):
     return {
         "lat": state.settings.demo_lat,
         "lon": state.settings.demo_lon,
         "label": state.settings.demo_label,
     }
+
+
+def _safe_web_file(full_path: str) -> Path | None:
+    """Resolve a path under WEB_DIST or return None if unsafe / missing."""
+    if not full_path or full_path.startswith("/") or "\\" in full_path:
+        return None
+    # Block traversal segments before resolve.
+    parts = Path(full_path).parts
+    if any(p == ".." or p.startswith("..") for p in parts):
+        return None
+    candidate = (WEB_DIST / full_path).resolve()
+    root = WEB_DIST.resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    if candidate.is_file():
+        return candidate
+    return None
 
 
 # Serve the Vite production build when present (single-port demo mode).
@@ -351,12 +476,11 @@ if WEB_DIST.exists():
 
     @app.get("/{full_path:path}")
     def spa_fallback(full_path: str):
-        candidate = WEB_DIST / full_path
-        if candidate.is_file():
-            return FileResponse(candidate)
-        # Do not swallow API 404s
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="Not found")
+        safe = _safe_web_file(full_path)
+        if safe is not None:
+            return FileResponse(safe)
         return FileResponse(WEB_DIST / "index.html")
 
 

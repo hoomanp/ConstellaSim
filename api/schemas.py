@@ -39,9 +39,33 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000)
     session_id: str = Field(default="default", max_length=64)
 
+    @field_validator("message")
+    @classmethod
+    def message_nonblank(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("message must be a non-empty string")
+        return v
+
+    @field_validator("session_id")
+    @classmethod
+    def session_ok(cls, v: str) -> str:
+        v = (v or "default").strip() or "default"
+        if len(v) > 64:
+            raise ValueError("session_id too long")
+        return v
+
 
 class PlanRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=500)
+
+    @field_validator("query")
+    @classmethod
+    def query_nonblank(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("query must be a non-empty string")
+        return v
 
 
 class OptimizeRequest(BaseModel):

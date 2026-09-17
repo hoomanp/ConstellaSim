@@ -116,7 +116,18 @@ ConstellaSim/
 
 ---
 
-## Environment
+## Security notes (demo vs shared deploy)
+
+Local recruiter demos bind `0.0.0.0:5001` so phones on LAN can connect. For any shared host:
+
+```bash
+export REQUIRE_API_KEY=true
+export CONSTELLASIM_API_KEY='long-random-secret'
+export CORS_ALLOW_ALL=false
+export HOST=127.0.0.1   # optional local-only bind
+```
+
+v2 mitigations: SPA path containment, security headers, rate limits (slowapi), optional API key, per-session simulation snapshots (`X-Session-Id`), tightened CORS (no `*` unless `CORS_ALLOW_ALL=true`), Android cleartext limited to debug/local domains, iOS ATS without global arbitrary loads.
 
 | Variable | Default | Notes |
 |---|---|---|

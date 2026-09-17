@@ -34,11 +34,25 @@ def resolve_city(city: str) -> tuple[float | None, float | None]:
     key = city.strip().lower()
     if key in CITY_ATLAS:
         return CITY_ATLAS[key]
-    # Partial match (e.g. "Paris, France")
-    for name, coords in CITY_ATLAS.items():
+    # Partial match (e.g. "Paris, France") — longest atlas name wins.
+    for name, coords in sorted(CITY_ATLAS.items(), key=lambda kv: len(kv[0]), reverse=True):
         if name in key:
             return coords
     return state.geocoder.resolve_location(city)
+
+
+def extract_city_from_query(query: str) -> str | None:
+    """Match an atlas city mentioned in natural-language planner input."""
+    q = (query or "").strip().lower()
+    if not q:
+        return None
+    for name in sorted(CITY_ATLAS.keys(), key=len, reverse=True):
+        if name in q:
+            # Prefer canonical display names.
+            if name == "nyc":
+                return "New York"
+            return " ".join(part.capitalize() for part in name.split())
+    return None
 
 
 def run_simulation(src_lat: float, src_lon: float, dest_city: str) -> tuple[dict | None, str | None]:
@@ -99,7 +113,7 @@ def run_simulation(src_lat: float, src_lon: float, dest_city: str) -> tuple[dict
     }, None
 
 
-def remember_simulation(result: dict) -> dict:
+def remember_simulation(result: dict, session_id: str | None = None) -> dict:
     snapshot = {
         "source": result["src"],
         "destination": result["dest"],
@@ -108,6 +122,5 @@ def remember_simulation(result: dict) -> dict:
         "packet_loss_pct": 0 if result["latency"] else 100,
         "topology": result["topology"],
     }
-    with state.sim_lock:
-        state.last_sim.update(snapshot)
+    state.put_sim(snapshot, session_id=session_id)
     return snapshot
