@@ -65,3 +65,8 @@ mobile/android/app/build/
 mobile/android/build/
 mobile/android/.gradle/
 web/*.tsbuildinfo
+
+# Expo
+expo-app/node_modules/
+expo-app/.expo/
+expo-app/dist/

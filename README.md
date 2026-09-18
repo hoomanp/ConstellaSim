@@ -53,23 +53,18 @@ python -m api.main
 cd web && npm run dev   # http://localhost:5173 (proxies /api → :5001)
 ```
 
-### Native mobile
+### Expo Go (Mac mini — recommended for quick phone demos)
 
 ```bash
-./scripts/demo.sh                 # API + UI on :5001
-./scripts/mobile-sync.sh          # build React → Capacitor www + sync
-cd mobile && npx cap open ios     # Mac + Xcode
-# or
-cd mobile && npx cap open android
+# Terminal A
+./scripts/demo.sh
+
+# Terminal B
+./scripts/expo-start.sh
+# scan QR with Expo Go, enter http://<Mac-LAN-IP>:5001, tap Open
 ```
 
-In the app: **⚙ Settings** → set LAN API URL → **Demo mode**.
-
-Feature smoke test (API):
-
-```bash
-./scripts/test-features.sh http://127.0.0.1:5001
-```
+Details: [`expo-app/README.md`](expo-app/README.md).
 
 ---
 
