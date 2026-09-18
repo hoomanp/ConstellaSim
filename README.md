@@ -78,6 +78,7 @@ ConstellaSim/
 │   ├── simulation.py      # Topology run + city atlas
 │   └── ai_fallback.py     # Offline demo analyst
 ├── web/                   # React 19 recruiter UI
+├── expo-app/              # Expo Go WebView shell (Mac mini phone demos)
 ├── mobile/                # Capacitor iOS + Android shell
 ├── knowledge_base/        # RAG grounding docs
 └── tests/                 # pytest (engine + API)
