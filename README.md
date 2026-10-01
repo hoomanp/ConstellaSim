@@ -1,87 +1,159 @@
-# ConstellaSim: LEO Network Topology Simulator
+# ConstellaSim: LEO Satellite Network Topology & Discrete-Event Simulator 🛰️
 
-**ConstellaSim** is an advanced discrete-event simulator (DES) for modeling packet-level networking and topology dynamics in Low Earth Orbit (LEO) satellite constellations. It combines SimPy-based network simulation with a multi-cloud RAG AI analyst accessible from any mobile browser.
+> **Enterprise-grade discrete-event simulator (DES) for packet-level routing, dynamic Inter-Satellite Link (ISL) mesh topologies, and multi-cloud RAG network telemetry analysis in Low Earth Orbit (LEO) mega-constellations.**
 
----
-
-## What's Inside
-
-| Module | Technology | Purpose |
-|---|---|---|
-| `constellasim/engine.py` | SimPy, NetworkX | Discrete-event simulation, Dijkstra routing |
-| `constellasim/node.py` | SimPy | Satellite and GroundStation node models |
-| `constellasim/llm.py` | Google/Azure/Bedrock | RAG-enabled AI network analyst |
-| `constellasim/planner.py` | LLM + allowlist | NL2Function mission planner |
-| `constellasim/monitor.py` | threading | Background anomaly detection |
-| `constellasim/utils.py` | Geopy | GPS/city geocoding with LRU cache |
-| `mobile_client/app.py` | Flask, SSE | REST + Server-Sent Events API (port 5001) |
+[![Python: 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
+[![Simulation: SimPy + NetworkX](https://img.shields.io/badge/Simulation-SimPy%20%2B%20NetworkX-orange.svg)](https://simpy.readthedocs.io/)
+[![Accelerator: Rust Core (PyO3)](https://img.shields.io/badge/Core-Rust%20(PyO3)-red.svg)](#hybrid-simulation-engine)
+[![AI: Multi--Cloud RAG](https://img.shields.io/badge/AI-Multi--Cloud%20RAG%20(Gemini%2FAzure%2FBedrock)-purple.svg)](#ai--rag-mission-analyst)
+[![Domain: LEO Aerospace Networks](https://img.shields.io/badge/Domain-LEO%20Aerospace%20Networks-00bcd4.svg)](#orbital-dynamics--mathematical-formulations)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
 
-## Key Features
+## 🧭 Executive Summary & Aerospace Systems Thesis
 
-### Network Simulation Engine
-- **Dijkstra-Powered Routing:** Lowest-latency path discovery across satellite meshes using NetworkX.
-- **ISL & GSL Modeling:** Inter-Satellite Links and Ground-to-Satellite Links with configurable edge weights.
-- **Congestion Simulation:** Per-node `buffer_limit` triggers tail-drop packet loss under load.
-- **Propagation + Processing Delay:** Speed-of-light delay modeled per km, plus random CPU overhead.
-- **Handover Logic:** Ground stations automatically reconnect as satellites transit the field of view.
-- **Analytics Report:** Sent / Received / Dropped counts, average end-to-end latency, packet loss rate.
+Low Earth Orbit (LEO) mega-constellations—such as **Amazon Project Kuiper**, **SpaceX Starlink**, and **Telesat Lightspeed**—operate in an intensely dynamic operational regime. Satellites traverse the sky at ~7.5 km/s, completing an orbit every 90 to 100 minutes. As a consequence:
+1. **Dynamic Topography & Churn:** Ground-to-Satellite Links (GSLs) persist for only 5 to 10 minutes before requiring handover to an approaching satellite.
+2. **Optical Inter-Satellite Link (OISL) Routing:** Packets traversing global distances must hop across dynamic laser meshes where propagation delay changes continuously as inter-satellite distances and orbital plane crossings fluctuate.
+3. **Queue Congestion & Buffer Sizing:** On-orbit hardware faces strict thermal, weight, and radiation constraints, limiting on-board memory buffers and making packet drops under bursty loads a critical mission risk.
 
-### AI / RAG Network Analyst (5 Features)
-1. **Streaming Analysis** — `GET /api/simulate/stream` SSE endpoint: simulation result + AI commentary streamed token-by-token.
-2. **Multi-Turn Chat** — `POST /api/chat` contextual follow-up about the current simulation snapshot (up to 10 turns, server-side session).
-3. **NL2Function Planner** — `POST /api/plan` parses plain English into `simulate` or `topology_info` function calls via AI with strict allowlist validation.
-4. **Anomaly Monitor** — Optional background thread (`ANOMALY_MONITOR=true`) polls simulation state and generates WARNING/CRITICAL alerts accessible at `GET /api/alerts`.
-5. **Network Briefing** — `GET /api/briefing` downloads a structured Markdown report grounded in `knowledge_base/` LEO networking standards.
-
-Providers: **Google Gemini 1.5 Flash**, **Azure OpenAI (GPT-4 Turbo)**, **Amazon Bedrock (Claude 3)**.
-
-### Mobile Web UI
-- GPS-based source node — phone's location sets the origin ground station automatically.
-- NL Planner widget: "Simulate packet from Paris to Tokyo" → executes a full simulation.
-- Streaming AI analysis with blinking cursor animation.
-- Alert badge with polling every 10 seconds.
-- Briefing download button (Markdown report).
-- Multi-turn chat widget with New Chat / Reset.
+**ConstellaSim** provides aerospace systems engineers, telecommunications architects, and platform operators with an advanced discrete-event simulation platform. It models packet-level routing, dynamic Dijkstra shortest-path discovery, buffer queue dynamics, and Doppler-aware link handovers, coupled with an **SSE-streamed multi-cloud RAG AI analyst** accessible directly from desktop or mobile command interfaces.
 
 ---
 
-## Architecture
+## 📐 Orbital Dynamics & Mathematical Formulations
 
+### 1. Dynamic Inter-Satellite Propagation Delay
+
+Propagation delay between satellite node $S_A$ and satellite node $S_B$ at epoch $t$ is governed by Euclidean range vectors and the speed of light in vacuum ($c \approx 299,792 \text{ km/s}$):
+
+$$t_{\text{prop}}(t) = \frac{\|\mathbf{r}_{A}(t) - \mathbf{r}_{B}(t)\|}{c}$$
+
+### 2. End-to-End Latency Formulation
+
+For an end-to-end multi-hop path $\mathcal{P} = (e_1, e_2, \dots, e_k)$ from source ground station to destination ground station:
+
+$$T_{\text{e2e}} = \sum_{e \in \mathcal{P}} \left[ t_{\text{prop}}(e) + t_{\text{trans}}(e) + t_{\text{queue}}(e) + t_{\text{proc}}(e) \right]$$
+
+Where:
+- $t_{\text{trans}}(e) = \frac{L_{\text{packet}}}{R_{\text{bandwidth}}(e)}$ is the transmission delay.
+- $t_{\text{queue}}(e) \sim \text{FIFO}(\text{buffer\_depth})$ is queuing delay under SimPy discrete-event contention.
+- $t_{\text{proc}}(e) \in [0.1, 0.3]\text{ ms}$ models on-orbit radiation-tolerant microprocessor routing overhead.
+
+### 3. Buffer Contention & Tail-Drop Model
+
+When an ingress link delivers a packet to node $v$ whose internal queue exceeds $\text{buffer\_limit}$:
+
+$$P(\text{Drop}) = \begin{cases} 1 & \text{if } Q_{\text{current}}(v) \ge Q_{\text{capacity}}(v) \\ 0 & \text{otherwise} \end{cases}$$
+
+---
+
+## 🏛️ System Architecture
+
+```mermaid
+flowchart TD
+    subgraph ClientLayer["Multi-Platform Client Tier"]
+        Mobile["Mobile Web Client (GPS-Enabled)"]
+        CLI["Desktop CLI / Batch Evaluation"]
+        StreamAPI["SSE Telemetry Stream (Port 5001)"]
+    end
+
+    subgraph ServiceLayer["API Gateway & Security Plane (Flask)"]
+        Auth["Session Security & CSP Nonces"]
+        Limiter["Rate Limiting & ProxyFix Engine"]
+        PlannerAPI["NL2Function Mission Planner"]
+    end
+
+    subgraph SimEngine["Discrete-Event Simulation Engine"]
+        EventLoop["SimPy Event Orchestrator"]
+        CoreRS["constella-core-rs (Rust Routing Core / PyO3)"]
+        GraphModel["NetworkX Mesh Topology (ISL / GSL)"]
+        NodeSim["Satellite & GroundStation Nodes"]
+        
+        EventLoop <--> CoreRS
+        EventLoop <--> GraphModel
+        GraphModel <--> NodeSim
+    end
+
+    subgraph IntelligenceLayer["Multi-Cloud AI / RAG Mission Analyst"]
+        KB[("Knowledge Base\n• ITU-R S.1503\n• LEO Network Standards\n• Space Packet Protocols")]
+        RAG["RAG Grounding Engine"]
+        LLMHub{"Multi-Cloud LLM Provider"}
+        Gemini["Google Gemini 1.5 Flash"]
+        Azure["Azure OpenAI GPT-4 Turbo"]
+        Bedrock["Amazon Bedrock Claude 3"]
+        
+        KB --> RAG
+        RAG --> LLMHub
+        LLMHub --> Gemini
+        LLMHub --> Azure
+        LLMHub --> Bedrock
+    end
+
+    ClientLayer <--> ServiceLayer
+    ServiceLayer <--> SimEngine
+    SimEngine --> StreamAPI
+    ServiceLayer <--> IntelligenceLayer
 ```
+
+---
+
+## 🔬 Core Capabilities
+
+### 1. Hybrid Simulation Engine
+- **SimPy + NetworkX Core:** Discrete-event event loop with microsecond fidelity, simulating simultaneous packet generation across global ground stations.
+- **Rust-Accelerated Route Planning (`constella-core-rs`):** C-ABI / PyO3 interface designed for high-performance topology updates and graph traversal at scale.
+- **Dynamic Topology Handover:** Automatically switches GSL connections as satellites exit the elevation cone of ground stations ($< 15^\circ$ elevation cutoff).
+
+### 2. Multi-Cloud AI & RAG Mission Analyst
+ConstellaSim integrates a decoupled AI telemetry analyst capable of running against **Google Gemini**, **Azure OpenAI**, or **Amazon Bedrock**:
+1. **Streaming Real-Time Analysis (`/api/simulate/stream`):** Server-Sent Events (SSE) push token-by-token engineering commentary as the simulation executes.
+2. **Contextual Multi-Turn Chat (`/api/chat`):** Server-side session memory allowing flight controllers to query simulation snapshots (e.g., *"Why did packet loss spike on SAT-2 at epoch 14s?"*).
+3. **NL2Function Mission Planner (`/api/plan`):** Parses plain-language flight instructions (*"Simulate high-bandwidth burst from Santiago to Frankfurt via polar ISL"*) into validated simulation parameters using strict schema allowlists.
+4. **Autonomous Anomaly Detection (`/api/alerts`):** Threaded background watcher evaluating rolling link saturation and buffer bloat.
+5. **Grounded Standards Briefings (`/api/briefing`):** Exports technical Markdown briefings grounded in `knowledge_base/network_standards.txt`.
+
+### 3. Enterprise Security & Hardening
+- **CSP Nonce Generation:** Enforces strict Content Security Policy headers, `X-Frame-Options: DENY`, and HSTS on all endpoints.
+- **Input Sanitization & Path Traversal Guards:** Resolves knowledge base paths securely, preventing directory traversal and prompt injection.
+- **Concurrency & Memory Throttling:** Semaphore-gated simulation threads (max 4 concurrent) with bounded ring buffers to prevent memory exhaustion under continuous load.
+
+---
+
+## 📂 Repository Topology
+
+```text
 ConstellaSim/
-├── constellasim/
-│   ├── engine.py           # ConstellationSimulator: event loop, routing, stats
-│   ├── node.py             # NetworkNode, Satellite, GroundStation
-│   ├── utils.py            # Geocoder (LRU cache, allowlist validation)
-│   ├── llm.py              # NetworkAI: RAG analysis, streaming, chat, briefing
-│   ├── planner.py          # NetworkPlanner: NL2Function with allowlist
-│   └── monitor.py          # AnomalyMonitor: background thread, alert feed
+├── README.md                      # Executive Platform Specification
+├── GUIDE.md                       # Comprehensive User & Operations Manual
+├── requirements.txt               # Production Python dependencies
+├── Cargo.toml                     # Rust workspace declaration
+├── constella-core-rs/             # High-performance Rust routing core (PyO3)
+│   ├── Cargo.toml
+│   └── src/lib.rs
+├── constellasim/                  # Python Simulation Package
+│   ├── engine.py                  # ConstellationSimulator event loop & Dijkstra routing
+│   ├── node.py                    # Satellite and GroundStation discrete models
+│   ├── utils.py                   # LRU-cached Nominatim geocoder & validation
+│   ├── llm.py                     # Multi-cloud RAG analyst (Gemini / Azure / Bedrock)
+│   ├── planner.py                 # NL2Function parser with allowlist guards
+│   └── monitor.py                 # Background anomaly thread & alert feed
 ├── mobile_client/
-│   └── app.py              # Flask REST + SSE + security headers
+│   ├── app.py                     # Flask REST + SSE application
+│   └── templates/                 # Mobile-responsive flight control UI
 ├── knowledge_base/
-│   └── network_standards.txt  # LEO networking benchmarks for RAG grounding
+│   └── network_standards.txt      # Domain reference documents for RAG grounding
 └── examples/
-    ├── multi_hop_demo.py   # 3-satellite linear chain demo
-    └── advanced_network.py # Multi-city mesh network demo
+    ├── multi_hop_demo.py          # 3-satellite linear orbital chain
+    └── advanced_network.py        # Multi-city global mesh network demo
 ```
-
-### API Endpoints
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/simulate` | Blocking simulation: src lat/lon → dest city |
-| `GET` | `/api/simulate/stream` | SSE: simulation result + streaming AI analysis |
-| `POST` | `/api/chat` | Multi-turn AI conversation about current simulation |
-| `POST` | `/api/chat/reset` | Clear session chat history |
-| `POST` | `/api/plan` | NL2Function: plain English → `simulate` or `topology_info` |
-| `GET` | `/api/alerts` | Anomaly alert feed (JSON array) |
-| `GET` | `/api/briefing` | Download Markdown network briefing |
 
 ---
 
-## Installation
+## 🚀 Quickstart & Operations
+
+### 1. Installation
 
 ```bash
 git clone https://github.com/hoomanp/ConstellaSim.git
@@ -90,101 +162,31 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Run the Examples
+### 2. Run Verification Scenarios
 
 ```bash
-# 3-satellite linear chain (no API key needed)
+# Linear multi-hop satellite chain (Self-contained, zero cloud credentials required)
 python3 -m examples.multi_hop_demo
 
-# Multi-city mesh network
+# Multi-city global mesh topology
 python3 -m examples.advanced_network
 ```
 
-### Start the Mobile Web App
+### 3. Launch Mobile Command Server
 
 ```bash
-export FLASK_SECRET_KEY=your-secret-key   # required
-export GOOGLE_API_KEY=your-key             # or AZURE_OPENAI_KEY / AWS creds
+export FLASK_SECRET_KEY="c2VjdXJlX2tleV9leGVjdXRpdmVfc2VsZWN0"
+export NETWORK_AI_PROVIDER="google"      # Or: azure, amazon
+export GOOGLE_API_KEY="your-gemini-key"
 export PORT=5001
+
 python3 mobile_client/app.py
 ```
 
-Open `http://localhost:5001` in any browser, or `http://<YOUR_LAN_IP>:5001` on a phone connected to the same network.
+Access the flight dashboard at `http://localhost:5001` or connect any smartphone on the local subnet.
 
 ---
 
-## Environment Variables
+## 📄 License & Attribution
 
-| Variable | Default | Description |
-|---|---|---|
-| `FLASK_SECRET_KEY` | — | **Required.** Cryptographic session key |
-| `PORT` | `5001` | Flask server port |
-| `NETWORK_AI_PROVIDER` | `google` | AI provider: `google`, `azure`, `amazon` |
-| `GOOGLE_API_KEY` | — | Google Gemini 1.5 Flash API key |
-| `AZURE_OPENAI_KEY` | — | Azure OpenAI API key |
-| `AZURE_OPENAI_ENDPOINT` | — | Azure OpenAI endpoint URL |
-| `AZURE_DEPLOYMENT_NAME` | `gpt-4-turbo` | Azure deployment name |
-| `ANOMALY_MONITOR` | `false` | Enable background anomaly monitoring thread |
-| `NOMINATIM_USER_AGENT` | `ConstellaSim/1.0` | Nominatim geocoder user-agent string |
-| `FLASK_DEBUG` | `false` | Development mode (never `true` in production) |
-
----
-
-## Tech Stack
-
-**Simulation:** Python 3.9+, SimPy (discrete-event), NetworkX (graph/routing), Geopy (geocoding)
-
-**API/UI:** Flask, flask-limiter (rate limiting), Werkzeug ProxyFix
-
-**AI:** Google Generative AI (Gemini 1.5 Flash), OpenAI SDK (Azure), Boto3 (Amazon Bedrock)
-
-**Security:** CSP nonces, X-Frame-Options, HSTS, per-request nonce generation, input allowlists, path traversal guards, prompt injection sanitisation
-
----
-
-## Simulation Model
-
-The default topology is a **linear chain**: `GroundStation(src)` → `SAT1` → `SAT2` → `SAT3` → `GroundStation(dest)`.
-
-Link weights (ms):
-- Ground-to-satellite: 2.0 ms base
-- Inter-satellite: 5.0 ms base
-- Each hop adds random processing delay of 0.1–0.3 ms
-
-Packet loss occurs when a destination node's queue exceeds `buffer_limit` (default 100 packets).
-
----
-
-## Changelog
-
-### v1.2 — 5 AI Features + Security Audit (2026-02)
-- Feature 1: Streaming SSE AI analysis (`/api/simulate/stream`)
-- Feature 2: Multi-turn chat with server-side session history (`/api/chat`, `/api/chat/reset`)
-- Feature 3: NL2Function network planner with AI allowlist validation (`/api/plan`)
-- Feature 4: Background anomaly monitor thread with alert feed (`/api/alerts`)
-- Feature 5: AI-generated Markdown network briefing download (`/api/briefing`)
-- Security: `FLASK_SECRET_KEY` required at startup
-- Security: CSP nonce headers, X-Frame-Options DENY, HSTS on all responses
-- Security: Rate limiting via flask-limiter (30/min default, 5/min on briefing)
-- Security: Input allowlist on geocoder queries, length caps on all string inputs
-- Security: Prompt injection sanitisation in `_sanitize()` (control chars, Unicode overrides)
-- Security: Path traversal guard on `kb_path` and knowledge base file resolution
-- Optimization: `Geocoder` LRU cache (max 1,000 entries), `NetworkAI` KB loaded once at startup
-- Optimization: Simulation semaphore (max 4 concurrent) prevents CPU overload
-- Fix: `latency` buffer capped at 10,000 samples to prevent unbounded memory growth
-- Fix: `received_packets` log per node capped at 10,000 entries
-
-### v1.1 — Core Fixes
-- Fixed missing `random` import in `node.py` `GroundStation.handover()`
-- Fixed `multi_hop_demo.py`: wrong `send_packet` signature and missing ISL links
-- Fixed `advanced_network.py`: hardcoded node IDs replaced with `gs_src.node_id` / `gs_dest.node_id`
-- Removed unused `numpy`, `matplotlib`, `pandas` from `requirements.txt`
-- `FLASK_DEBUG` environment variable replacing hardcoded `debug=True`
-
----
-
-## License
-MIT License.
-
-## Contact
-**Hooman P.** — [GitHub](https://github.com/hoomanp)
+Distributed under the **MIT License**. Designed and engineered by **Hooman Parta** ([@hoomanp](https://github.com/hoomanp)).
