@@ -1,0 +1,22 @@
+node_modules/
+.capacitor/
+*.log
+.DS_Store
+
+# Generated web assets (recreated by `npx cap sync`)
+ios/App/App/public/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+
+# Native build / IDE
+ios/App/Pods/
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/.idea/
+android/capacitor-cordova-android-plugins/
+ios/capacitor-cordova-ios-plugins/

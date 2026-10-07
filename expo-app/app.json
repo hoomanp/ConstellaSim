@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "ConstellaSim",
+    "slug": "constellasim",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "constellasim",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#05080f"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.constellasim.expo",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "ConstellaSim uses GPS as the source ground station for LEO packet diagnostics.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "android": {
+      "package": "com.constellasim.expo",
+      "adaptiveIcon": {
+        "backgroundColor": "#05080f",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "usesCleartextTraffic": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

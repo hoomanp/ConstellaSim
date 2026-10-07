@@ -1,6 +1,7 @@
 from flask import Flask, render_template_string, jsonify, request, g, session, Response, stream_with_context
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 import sys
 import os
@@ -30,7 +31,14 @@ app.secret_key = _secret
 app.config['MAX_CONTENT_LENGTH'] = 8 * 1024
 # M-1: trust the first X-Forwarded-For hop so flask-limiter sees the real client IP.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+# Allow Capacitor / Expo shells and LAN browsers to probe the API before navigating in.
+CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=False)
 limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "30 per minute"])
+
+# Demo observer used when device GPS is unavailable (iOS Simulator / Android Emulator).
+DEMO_LAT = float(os.getenv("DEMO_LAT", "34.1675"))
+DEMO_LON = float(os.getenv("DEMO_LON", "-118.5504"))
+DEMO_LABEL = os.getenv("DEMO_LABEL", "Tarzana, CA")
 
 # Wrap NetworkAI init to allow graceful degradation when API keys are absent.
 try:
@@ -83,7 +91,26 @@ def set_security_headers(response):
 @app.route('/')
 def home():
     """Renders the Mobile Configurator UI."""
-    return render_template_string(HTML_TEMPLATE, nonce=g.csp_nonce)
+    return render_template_string(
+        HTML_TEMPLATE,
+        nonce=g.csp_nonce,
+        demo_lat=DEMO_LAT,
+        demo_lon=DEMO_LON,
+        demo_label=DEMO_LABEL,
+    )
+
+
+@app.route('/api/health')
+@limiter.exempt
+def health():
+    """Lightweight readiness probe for native shells and load balancers."""
+    return jsonify({
+        "status": "ok",
+        "service": "constellasim",
+        "ai": ai_analyst is not None,
+        "anomaly_monitor": _monitor is not None,
+        "demo_location": {"lat": DEMO_LAT, "lon": DEMO_LON, "label": DEMO_LABEL},
+    })
 
 
 def _run_simulation(src_lat, src_lon, dest_city):
@@ -475,6 +502,7 @@ HTML_TEMPLATE = """
         .text-input { width: calc(100% - 24px); padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #374151; background: #374151; color: white; font-size: 1rem; box-sizing: border-box; }
         .btn-primary { background: #8b5cf6; color: white; border: none; padding: 15px 30px; font-size: 1.1rem; border-radius: 50px; cursor: pointer; width: 100%; margin-top: 10px; transition: background 0.2s; }
         .btn-primary:active { background: #7c3aed; transform: scale(0.98); }
+        .btn-demo { background: #374151; color: #e5e7eb; border: 1px solid #4b5563; padding: 10px 20px; font-size: 0.9rem; border-radius: 50px; cursor: pointer; width: 100%; margin-top: 8px; }
         .ai-box { background: #4c1d95; border-left: 4px solid #a78bfa; padding: 15px; text-align: left; font-size: 0.9rem; margin-top: 10px; border-radius: 4px; white-space: pre-wrap; min-height: 40px; }
         .data-row { display: flex; justify-content: space-between; margin: 8px 0; }
         .label { color: #9ca3af; }
@@ -546,6 +574,7 @@ HTML_TEMPLATE = """
         <input type="text" class="text-input" id="destination"
                placeholder="Destination City (e.g. London)" value="London">
         <button class="btn-primary" onclick="runSimulation()">&#128640; Run AI Diagnostic</button>
+        <button class="btn-demo" onclick="runSimulationDemo()">&#127760; Demo Mode ({{ demo_label }})</button>
         <div id="status"></div>
         <button class="btn-briefing hidden" id="briefing-btn" onclick="downloadBriefing()">
             &#128196; Download Briefing
@@ -598,6 +627,9 @@ HTML_TEMPLATE = """
 
     <script nonce="{{ nonce }}">
         var _eventSource = null;
+        var DEMO_LAT = {{ demo_lat }};
+        var DEMO_LON = {{ demo_lon }};
+        var DEMO_LABEL = {{ demo_label|tojson }};
 
         // Feature 4: Alert polling — DOM methods to avoid innerHTML with user data
         function pollAlerts() {
@@ -630,57 +662,69 @@ HTML_TEMPLATE = """
             document.getElementById('alert-panel').classList.toggle('hidden');
         }
 
-        // Feature 1: Streaming via EventSource
-        function runSimulation() {
+        function startSimulationStream(lat, lon, statusPrefix) {
             var dest = document.getElementById('destination').value.trim();
             var status = document.getElementById('status');
+            status.textContent = statusPrefix || "Running AI Analysis...";
 
-            if (!navigator.geolocation) { status.textContent = "Geolocation needed."; return; }
+            if (_eventSource) { _eventSource.close(); }
+            document.getElementById('ai-text').textContent = '';
+            document.getElementById('ai-cursor').classList.remove('hidden');
+
+            var url = '/api/simulate/stream?src_lat=' + lat + '&src_lon=' + lon +
+                      '&dest_city=' + encodeURIComponent(dest);
+            _eventSource = new EventSource(url);
+
+            _eventSource.addEventListener('simresult', function(e) {
+                var d = JSON.parse(e.data);
+                document.getElementById('results').classList.remove('hidden');
+                document.getElementById('res_dest').textContent = d.destination || '-';
+                document.getElementById('res_lat').textContent = (d.latency_ms || 'Dropped') + ' ms';
+            });
+
+            _eventSource.onmessage = function(e) {
+                var token = JSON.parse(e.data);
+                document.getElementById('ai-text').textContent += token;
+            };
+
+            _eventSource.addEventListener('done', function() {
+                _eventSource.close();
+                document.getElementById('ai-cursor').classList.add('hidden');
+                document.getElementById('briefing-btn').classList.remove('hidden');
+                document.getElementById('chat-widget').classList.remove('hidden');
+                document.getElementById('optimizer-widget').classList.remove('hidden');
+                status.textContent = "Analysis Complete";
+                fetchAndRenderTopology();
+            });
+
+            _eventSource.onerror = function() {
+                _eventSource.close();
+                document.getElementById('ai-cursor').classList.add('hidden');
+                status.textContent = "Analysis Failed \u2014 please retry";
+            };
+        }
+
+        // Feature 1: Streaming via EventSource
+        function runSimulation() {
+            var status = document.getElementById('status');
+
+            if (!navigator.geolocation) {
+                status.textContent = "Geolocation unavailable \u2014 use Demo Mode.";
+                return;
+            }
             status.textContent = "Acquiring GPS...";
 
             navigator.geolocation.getCurrentPosition(function(pos) {
-                var lat = pos.coords.latitude;
-                var lon = pos.coords.longitude;
-                status.textContent = "Running AI Analysis...";
-
-                if (_eventSource) { _eventSource.close(); }
-                document.getElementById('ai-text').textContent = '';
-                document.getElementById('ai-cursor').classList.remove('hidden');
-
-                var url = '/api/simulate/stream?src_lat=' + lat + '&src_lon=' + lon +
-                          '&dest_city=' + encodeURIComponent(dest);
-                _eventSource = new EventSource(url);
-
-                _eventSource.addEventListener('simresult', function(e) {
-                    var d = JSON.parse(e.data);
-                    document.getElementById('results').classList.remove('hidden');
-                    document.getElementById('res_dest').textContent = d.destination || '-';
-                    document.getElementById('res_lat').textContent = (d.latency_ms || 'Dropped') + ' ms';
-                });
-
-                _eventSource.onmessage = function(e) {
-                    var token = JSON.parse(e.data);
-                    document.getElementById('ai-text').textContent += token;
-                };
-
-                _eventSource.addEventListener('done', function() {
-                    _eventSource.close();
-                    document.getElementById('ai-cursor').classList.add('hidden');
-                    document.getElementById('briefing-btn').classList.remove('hidden');
-                    document.getElementById('chat-widget').classList.remove('hidden');
-                    document.getElementById('optimizer-widget').classList.remove('hidden');
-                    status.textContent = "Analysis Complete";
-                    fetchAndRenderTopology();
-                });
-
-                _eventSource.onerror = function() {
-                    _eventSource.close();
-                    document.getElementById('ai-cursor').classList.add('hidden');
-                    status.textContent = "Analysis Failed \u2014 please retry";
-                };
+                startSimulationStream(pos.coords.latitude, pos.coords.longitude);
             }, function() {
-                status.textContent = "GPS Denied";
-            });
+                status.textContent = "GPS Denied \u2014 tap Demo Mode to continue.";
+            }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+        }
+
+        function runSimulationDemo() {
+            var status = document.getElementById('status');
+            status.textContent = "Demo Mode: " + DEMO_LABEL;
+            startSimulationStream(DEMO_LAT, DEMO_LON, "Demo Mode (" + DEMO_LABEL + ")...");
         }
 
         // Feature 5: Briefing download

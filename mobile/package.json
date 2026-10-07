@@ -1,0 +1,35 @@
+{
+  "name": "constellasim-mobile",
+  "version": "1.0.0",
+  "description": "ConstellaSim native iOS & Android shell (Capacitor)",
+  "private": true,
+  "scripts": {
+    "sync": "npx cap sync",
+    "open:ios": "npx cap open ios",
+    "open:android": "npx cap open android",
+    "build:web": "echo 'Static launcher in www/ — no bundler required'",
+    "postinstall": "npx cap sync || true"
+  },
+  "keywords": [
+    "constellasim",
+    "capacitor",
+    "ios",
+    "android"
+  ],
+  "author": "Hooman P.",
+  "license": "MIT",
+  "dependencies": {
+    "@capacitor/android": "^7.4.2",
+    "@capacitor/app": "^7.0.1",
+    "@capacitor/core": "^7.4.2",
+    "@capacitor/geolocation": "^7.1.2",
+    "@capacitor/haptics": "^7.0.1",
+    "@capacitor/ios": "^7.4.2",
+    "@capacitor/keyboard": "^7.0.1",
+    "@capacitor/network": "^7.0.1",
+    "@capacitor/status-bar": "^7.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.2"
+  }
+}

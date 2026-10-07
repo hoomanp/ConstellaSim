@@ -1,7 +1,21 @@
-# Secrets
+# Secrets — never commit these
 .env
 *.env
+!.env.example
 .env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+*.keystore
+*.jks
+id_rsa
+id_rsa.*
+google-services.json
+GoogleService-Info.plist
+credentials.json
+service-account*.json
+*.secret
 
 # Python
 __pycache__/
@@ -26,3 +40,33 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Mobile / Capacitor
+mobile/node_modules/
+mobile/.capacitor/
+mobile/ios/App/Pods/
+mobile/ios/App/App/public/
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/capacitor-cordova-android-plugins/
+mobile/android/app/src/main/assets/public/
+mobile/android/app/src/main/assets/capacitor.config.json
+mobile/android/app/src/main/assets/capacitor.plugins.json
+mobile/android/local.properties
+mobile/*.log
+
+# Web (Vite)
+web/node_modules/
+web/dist/
+
+# Android build outputs
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/.gradle/
+web/*.tsbuildinfo
+
+# Expo
+expo-app/node_modules/
+expo-app/.expo/
+expo-app/dist/

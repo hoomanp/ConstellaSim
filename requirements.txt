@@ -1,9 +1,17 @@
 simpy>=4.1.0
 networkx>=3.2.0
 geopy>=2.4.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.0.0
+python-multipart>=0.0.9
+slowapi>=0.1.9
 flask>=3.0.0
 flask-limiter>=3.5.0
+flask-cors>=4.0.0
 openai>=1.0.0
 boto3>=1.34.0
 google-generativeai>=0.7.0
 python-dotenv>=1.0.0
+pytest>=8.0.0
+httpx>=0.27.0
