@@ -1,19 +1,19 @@
-# ConstellaSim: LEO Satellite Network Topology & Discrete-Event Simulator 🛰️
+# ConstellaSim: LEO Satellite Network Topology & Discrete-Event Simulator
 
-> **Enterprise-grade discrete-event simulator (DES) for packet-level routing, dynamic Inter-Satellite Link (ISL) mesh topologies, and multi-cloud RAG network telemetry analysis in Low Earth Orbit (LEO) mega-constellations.**
+> **Discrete-event simulator (DES) for packet-level routing, dynamic Inter-Satellite Link (ISL) mesh topologies, and telemetry analysis in Low Earth Orbit (LEO) mega-constellations.**
 
 [![Python: 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
 [![Simulation: SimPy + NetworkX](https://img.shields.io/badge/Simulation-SimPy%20%2B%20NetworkX-orange.svg)](https://simpy.readthedocs.io/)
 [![Accelerator: Rust Core (PyO3)](https://img.shields.io/badge/Core-Rust%20(PyO3)-red.svg)](#hybrid-simulation-engine)
-[![AI: Multi--Cloud RAG](https://img.shields.io/badge/AI-Multi--Cloud%20RAG%20(Gemini%2FAzure%2FBedrock)-purple.svg)](#ai--rag-mission-analyst)
+[![AI: Multi--Cloud RAG](https://img.shields.io/badge/AI-Multi--Cloud%20RAG%20(Gemini%2FAzure%2FBedrock)-purple.svg)](#2-multi-cloud-ai--rag-mission-analyst)
 [![Domain: LEO Aerospace Networks](https://img.shields.io/badge/Domain-LEO%20Aerospace%20Networks-00bcd4.svg)](#orbital-dynamics--mathematical-formulations)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
 
-## 🧭 Executive Summary & Aerospace Systems Thesis
+## Executive Summary & Aerospace Systems Thesis
 
-Low Earth Orbit (LEO) mega-constellations—such as **Amazon Project Kuiper**, **SpaceX Starlink**, and **Telesat Lightspeed**—operate in an intensely dynamic operational regime. Satellites traverse the sky at ~7.5 km/s, completing an orbit every 90 to 100 minutes. As a consequence:
+Low Earth Orbit (LEO) mega-constellations (such as Amazon Project Kuiper, SpaceX Starlink, and Telesat Lightspeed) operate in a dynamic operational regime. Satellites traverse low Earth orbit at ~7.5 km/s, completing an orbit every 90 to 100 minutes. As a consequence:
 1. **Dynamic Topography & Churn:** Ground-to-Satellite Links (GSLs) persist for only 5 to 10 minutes before requiring handover to an approaching satellite.
 2. **Optical Inter-Satellite Link (OISL) Routing:** Packets traversing global distances must hop across dynamic laser meshes where propagation delay changes continuously as inter-satellite distances and orbital plane crossings fluctuate.
 3. **Queue Congestion & Buffer Sizing:** On-orbit hardware faces strict thermal, weight, and radiation constraints, limiting on-board memory buffers and making packet drops under bursty loads a critical mission risk.
@@ -22,7 +22,7 @@ Low Earth Orbit (LEO) mega-constellations—such as **Amazon Project Kuiper**, *
 
 ---
 
-## 📐 Orbital Dynamics & Mathematical Formulations
+## Orbital Dynamics & Mathematical Formulations
 
 ### 1. Dynamic Inter-Satellite Propagation Delay
 
@@ -64,7 +64,7 @@ ConstellaSim operates in tandem with [**PyOrbit-Link**](https://github.com/hooma
 
 ---
 
-## 🏛️ System Architecture
+## System Architecture
 
 ```mermaid
 flowchart TD
@@ -114,7 +114,7 @@ flowchart TD
 
 ---
 
-## 🔬 Core Capabilities
+## Core Capabilities
 
 ### 1. Hybrid Simulation Engine
 - **SimPy + NetworkX Core:** Discrete-event event loop with microsecond fidelity, simulating simultaneous packet generation across global ground stations.
@@ -122,10 +122,10 @@ flowchart TD
 - **Dynamic Topology Handover:** Automatically switches GSL connections as satellites exit the elevation cone of ground stations ($< 15^\circ$ elevation cutoff).
 
 ### 2. Multi-Cloud AI & RAG Mission Analyst
-ConstellaSim integrates a decoupled AI telemetry analyst capable of running against **Google Gemini**, **Azure OpenAI**, or **Amazon Bedrock**:
+ConstellaSim integrates a decoupled AI telemetry analyst capable of running against Google Gemini, Azure OpenAI, or Amazon Bedrock:
 1. **Streaming Real-Time Analysis (`/api/simulate/stream`):** Server-Sent Events (SSE) push token-by-token engineering commentary as the simulation executes.
 2. **Contextual Multi-Turn Chat (`/api/chat`):** Server-side session memory allowing flight controllers to query simulation snapshots (e.g., *"Why did packet loss spike on SAT-2 at epoch 14s?"*).
-3. **NL2Function Mission Planner (`/api/plan`):** Parses plain-language flight instructions (*"Simulate high-bandwidth burst from Santiago to Frankfurt via polar ISL"*) into validated simulation parameters using strict schema allowlists.
+3. **NL2Function Mission Planner (`/api/plan`):** Parses plain-language flight instructions into validated simulation parameters using schema allowlists.
 4. **Autonomous Anomaly Detection (`/api/alerts`):** Threaded background watcher evaluating rolling link saturation and buffer bloat.
 5. **Grounded Standards Briefings (`/api/briefing`):** Exports technical Markdown briefings grounded in `knowledge_base/network_standards.txt`.
 
@@ -136,7 +136,7 @@ ConstellaSim integrates a decoupled AI telemetry analyst capable of running agai
 
 ---
 
-## 📂 Repository Topology
+## Repository Topology
 
 ```text
 ConstellaSim/
@@ -166,7 +166,7 @@ ConstellaSim/
 
 ---
 
-## 🚀 Quickstart & Operations
+## Quickstart & Operations
 
 ### 1. Installation
 
@@ -202,6 +202,6 @@ Access the flight dashboard at `http://localhost:5001` or connect any smartphone
 
 ---
 
-## 📄 License & Attribution
+## License & Attribution
 
 Distributed under the **MIT License**. Designed and engineered by **Hooman Parta** ([@hoomanp](https://github.com/hoomanp)).
